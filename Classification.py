@@ -132,7 +132,9 @@ def evaluate(model, test_loader, device):
     print(f"Test Accuracy: {acc:.2f}%")
     return acc
 
-def analyze_model(model, dataloader, device, class_names=None, max_misclassified=10):
+def analyze_model(model, dataloader, device, class_names=None, max_misclassified=10, save_path="model.png"):
+    dir = f"confusion_matrices/{save_path}"
+    os.makedirs(dir, exist_ok=True)
     model.eval()
     all_preds = []
     all_labels = []
@@ -156,7 +158,8 @@ def analyze_model(model, dataloader, device, class_names=None, max_misclassified
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
     disp.plot(xticks_rotation=45)
     plt.title("Confusion Matrix")
-    plt.show()
+    plt.savefig(dir + "/confusion_matrix.png")
+    plt.close()
 
     # Visualize misclassified images
     for i, (img, pred, label) in enumerate(misclassified):
@@ -164,16 +167,16 @@ def analyze_model(model, dataloader, device, class_names=None, max_misclassified
         title = f"Misclassified {i+1}: Pred={class_names[pred] if class_names else pred} | True={class_names[label] if class_names else label}"
         plt.title(title)
         plt.axis('off')
-        plt.show()
+        plt.savefig(dir + f"/misclassified_{i+1}.png")
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
-    create_dataset(5, 400, save_path="data/20dB.pt")
+    create_dataset(6, 2000, save_path="data/40dB_RCS_12000samples.pt")
 
     model = swin_t(
         channels=1,
-        num_classes=5,
+        num_classes=6,
         window_size=(2, 8),
         hidden_dim=96,
         layers=(2, 2, 6, 2),
@@ -183,17 +186,17 @@ if __name__ == "__main__":
         relative_pos_embedding=True
     ).to(device)
 
-    # model.load_state_dict(torch.load("original.pt"))
-    train_loader, val_loader, test_loader = load_dataloaders(batch_size=32, root_dir="data/20dB.pt", random_seed=42)
+    model.load_state_dict(torch.load("models/40dB_RCS.pt"))
+    train_loader, val_loader, test_loader = load_dataloaders(batch_size=32, root_dir="data/40dB_5000samples.pt", random_seed=42)
 
-    criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
+    # criterion = torch.nn.CrossEntropyLoss()
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
 
-    train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=8, save_path="models/original.pt")
+    # train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=50, save_path="models/40dB.pt")
 
-    model.load_state_dict(torch.load("models/original.pt"))
+    model.load_state_dict(torch.load("models/40dB_RCS.pt"))
 
     evaluate(model, test_loader, device)
 
-    class_names = [f"{i} target{'s' if i != 1 else ''}" for i in range(5)]  # or set your own
-    analyze_model(model, test_loader, device, class_names=class_names, max_misclassified=10)
+    class_names = [f"{i} target{'s' if i != 1 else ''}" for i in range(6)]  # or set your own
+    analyze_model(model, test_loader, device, class_names=class_names, max_misclassified=10, save_path="40dB_RCS.png")
