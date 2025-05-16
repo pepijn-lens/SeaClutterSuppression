@@ -15,6 +15,9 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from functools import partial
+
 # Speed of light (m/s)
 c0 = 299792458
 
@@ -292,87 +295,35 @@ def generate_single_burst(device, num_targets, shape=(64, 512), max_position=[50
     magnitude = 20 * torch.log10(torch.sqrt(tensor_data[..., 0]**2 + tensor_data[..., 1]**2) + 1e-10)
     magnitude = (magnitude - magnitude.mean()) / magnitude.std()
 
-    return magnitude.cpu()  # Ensure it's on CPU for saving
+    return magnitude.cpu().unsqueeze(0), num_targets  # Ensure it's on CPU for saving
 
-def create_dataset(n_targets, bursts_per_class, save_path="data/preprocessed_dataset.pt", device="cpu"):
+def burst_worker(num_targets, device):
+    return generate_single_burst(device=device, num_targets=num_targets)
+
+def create_dataset_parallel(n_targets, bursts_per_class, save_path="data/preprocessed_dataset.pt", device="cpu", num_workers=8):
     all_data = []
     all_labels = []
-    radar = PulsedRadar(noise=1, device=device)
 
-    for num_targets in range(n_targets):  # for classes 0 through 5
-        print(f"Generating data for {num_targets} targets") 
-        for _ in range(bursts_per_class):
-            burst_data = generate_single_burst(num_targets=num_targets, device=device)
-            burst_data = burst_data.unsqueeze(0)
+    total_tasks = n_targets * bursts_per_class
+    futures = []
+
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        for num_targets in range(n_targets):
+            for _ in range(bursts_per_class):
+                futures.append(executor.submit(burst_worker, num_targets, device))
+
+        print(f"🔄 Generating {total_tasks} bursts in parallel...")
+        for future in trange(total_tasks, desc="Progress"):
+            result = futures[future].result()  # Get completed in order (instead of as_completed)
+            burst_data, label = result
             all_data.append(burst_data)
-            all_labels.append(num_targets)
+            all_labels.append(label)
 
-    # Save as a tuple to match your Dataset loading
     torch.save((all_data, all_labels), save_path)
     print(f"✅ Dataset saved to: {save_path}")
 
-def generate_bursts(device, n_bursts=20, num_targets=2, shape=(64, 512), max_position=[500, 27.5], dir='swin_bursts'):
-    burst_dir = f"{dir}/num_targets_{num_targets}"
-    os.makedirs(burst_dir, exist_ok=True)
 
-    radar = PulsedRadar(noise=1, device=device)
-    indices = calculate_resolution(radar, min_dopp=-37, max_dopp=38)
-
-    for burst in trange(n_bursts):
-        # Generate random starting states for all targets
-        state_vectors = []
-        for _ in range(num_targets):
-            random_state = [
-                np.random.randint(-max_position[0], max_position[0]), np.random.randint(-max_position[1], max_position[1]),
-                np.random.randint(-max_position[0], max_position[0]), np.random.randint(-max_position[1], max_position[1])
-            ]
-            state_vectors.append(random_state)
-
-        # Only need 1 step to interpolate across a burst
-        target_sim = TargetSimulator(num_steps=1, state_vectors=state_vectors, randomness=[0.1, 0.1])
-        data_generator = RadarDataGenerator(radar, target_sim)
-        range_doppler_maps, ground_truths = data_generator.generate_data(num_targets=num_targets)
-
-        # Process first burst data
-        rd_map = range_doppler_maps[0]
-        ground_truth = ground_truths[0]
-
-        # Slice directly on GPU
-        rd_map = rd_map[indices, :512]  # shape: (64, 512), complex dtype
-        # print(f'achtergrond ruis {10*torch.log10(torch.mean(torch.abs(rd_map[-1])**2))}')
-        # plot_doppler(radar,20*np.log10(np.abs(rd_map.cpu().numpy())))
-
-        assert rd_map.shape == shape, f"Expected shape (64, 512), got {rd_map.shape}"
-
-        # Separate real and imaginary parts
-        real = rd_map.real 
-        imag = rd_map.imag  
-
-        # Stack into shape
-        tensor_data = torch.stack((real, imag), dim=-1)  # stays on GPU
-
-        # Compute magnitude (log scale)
-        magnitude = 20 * torch.log10(torch.sqrt(tensor_data[..., 0]**2 + tensor_data[..., 1]**2) + 1e-10)
-
-        # Normalize
-        magnitude = (magnitude - magnitude.mean()) / magnitude.std()
-
-        df = pd.DataFrame(magnitude.cpu().numpy())
-
-        table = pa.Table.from_pandas(df, preserve_index=False)
-        pq.write_table(table, f"{burst_dir}/burst_{burst:05d}.parquet")
-
-        # # Save ground truth (range and velocity per target)
-        # ranges = ground_truth[:, 0].tolist()
-        # velocities = ground_truth[:, 1].tolist()
-
-        # label_dict = {
-        #     "ranges": ranges,
-        #     "velocities": velocities
-        # }
-
-        # with open(f"{burst_dir}/burst_{burst:05d}.json", "w") as f:
-        #     json.dump(label_dict, f)
 
 if __name__ == "__main__":
-    create_dataset(5, 500, save_path="data/with_hammingfilter.pt")
+    create_dataset_parallel(5, 500, save_path="data/test.pt")
+    # create_dataset(5, 500, save_path="data/test.pt")

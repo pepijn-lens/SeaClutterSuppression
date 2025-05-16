@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import Dataset, random_split, DataLoader, Subset
 import time
 import matplotlib.pyplot as plt
-from radar import PulsedRadar, create_dataset
+from radar import PulsedRadar, create_dataset_parallel
 from helper import plot_doppler
 
 from collections import Counter
@@ -45,10 +45,15 @@ def load_dataloaders(root_dir="swin_bursts", batch_size=16, num_workers=0,random
 
     return train_loader, val_loader, test_loader
 
-def train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=10, save_path="best_model.pt"):
-    best_val_acc = 0.0
+import matplotlib.pyplot as plt
 
-    total_loss = []
+def train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=10, save_path="best_model.pt", patience=10):
+    best_val_acc = 0.0
+    best_epoch = -1
+    epochs_no_improve = 0
+
+    train_losses = []
+    val_losses = []
 
     for epoch in range(num_epochs):
         start_time = time.time()
@@ -58,9 +63,7 @@ def train(model, train_loader, val_loader, criterion, optimizer, device, num_epo
         correct = 0
         total = 0
 
-        i = 0
-        for inputs, labels in train_loader:
-            i += 1
+        for i, (inputs, labels) in enumerate(train_loader):
             inputs, labels = inputs.to(device), labels.to(device)
             optimizer.zero_grad()
             outputs = model(inputs)
@@ -73,19 +76,18 @@ def train(model, train_loader, val_loader, criterion, optimizer, device, num_epo
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
-            if i % 10 == 0:
-                print(f"Batch {i}/{len(train_loader)} | Loss: {loss.item():.4f}")
+            if (i + 1) % 10 == 0:
+                print(f"Batch {i+1}/{len(train_loader)} | Loss: {loss.item():.4f}")
 
         train_acc = 100. * correct / total
         train_loss /= total
+        train_losses.append(train_loss)
 
         # Validation
         model.eval()
         val_loss = 0.0
         correct = 0
         total = 0
-
-        total_loss.append(train_loss)
 
         with torch.no_grad():
             for inputs, labels in val_loader:
@@ -100,17 +102,43 @@ def train(model, train_loader, val_loader, criterion, optimizer, device, num_epo
 
         val_acc = 100. * correct / total
         val_loss /= total
+        val_losses.append(val_loss)
 
         elapsed = time.time() - start_time
         print(f"Epoch {epoch + 1}/{num_epochs} [{elapsed:.1f}s] "
               f"| Train Loss: {train_loss:.4f}, Acc: {train_acc:.2f}% "
               f"| Val Loss: {val_loss:.4f}, Acc: {val_acc:.2f}%")
 
-        # Save best model
+        # Early stopping logic
         if val_acc > best_val_acc:
             best_val_acc = val_acc
+            best_epoch = epoch + 1
             torch.save(model.state_dict(), save_path)
-            print(f"✅ Saved new best model with Val Acc: {val_acc:.2f}% → {save_path}")
+            print(f"✅ Saved new best model (epoch {best_epoch}) with Val Acc: {val_acc:.2f}% → {save_path}")
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+            print(f"⚠️ No improvement for {epochs_no_improve} epoch(s).")
+
+            if epochs_no_improve >= patience:
+                print(f"🛑 Early stopping triggered after {patience} epochs without improvement.")
+                print(f"🔁 Best model was from epoch {best_epoch} with Val Acc: {best_val_acc:.2f}%")
+                break
+
+    # Plot and save training/validation loss
+    plt.figure(figsize=(8, 5))
+    plt.plot(range(1, len(train_losses) + 1), train_losses, label="Train Loss")
+    plt.plot(range(1, len(val_losses) + 1), val_losses, label="Validation Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Training and Validation Loss")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig("training_loss.png")
+    plt.close()
+    print("📈 Saved training loss plot to training_loss.png")
+
 
 def evaluate(model, test_loader, device):
     model.eval()
@@ -172,11 +200,13 @@ def analyze_model(model, dataloader, device, class_names=None, max_misclassified
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
-    create_dataset(6, 2000, save_path="data/40dB_RCS_12000samples.pt")
+    model_name = "40dB_RCS"
+
+    # create_dataset_parallel(8, 3000, save_path=f"data/{model_name}.pt")
 
     model = swin_t(
         channels=1,
-        num_classes=6,
+        num_classes=8,
         window_size=(2, 8),
         hidden_dim=96,
         layers=(2, 2, 6, 2),
@@ -186,17 +216,17 @@ if __name__ == "__main__":
         relative_pos_embedding=True
     ).to(device)
 
-    model.load_state_dict(torch.load("models/40dB_RCS.pt"))
-    train_loader, val_loader, test_loader = load_dataloaders(batch_size=32, root_dir="data/40dB_5000samples.pt", random_seed=42)
+    model.load_state_dict(torch.load(f"models/{model_name}.pt"))
+    train_loader, val_loader, test_loader = load_dataloaders(batch_size=64, root_dir=f"data/{model_name}.pt", random_seed=42)
 
-    # criterion = torch.nn.CrossEntropyLoss()
-    # optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
+    criterion = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
 
-    # train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=50, save_path="models/40dB.pt")
+    train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=100, save_path=f"models/{model_name}.pt")
 
-    model.load_state_dict(torch.load("models/40dB_RCS.pt"))
+    model.load_state_dict(torch.load(f"models/{model_name}.pt"))
 
     evaluate(model, test_loader, device)
 
-    class_names = [f"{i} target{'s' if i != 1 else ''}" for i in range(6)]  # or set your own
-    analyze_model(model, test_loader, device, class_names=class_names, max_misclassified=10, save_path="40dB_RCS.png")
+    class_names = [f"{i} target{'s' if i != 1 else ''}" for i in range(8)]  # or set your own
+    analyze_model(model, test_loader, device, class_names=class_names, max_misclassified=10, save_path=f"{model_name}.png")
