@@ -160,7 +160,7 @@ def evaluate(model, test_loader, device):
     print(f"Test Accuracy: {acc:.2f}%")
     return acc
 
-def analyze_model(model, dataloader, device, class_names=None, max_misclassified=10, save_path="model.png"):
+def analyze_model(model, dataloader, device, class_names=None, max_misclassified=10, save_path="model.png", accruacy=0):
     dir = f"confusion_matrices/{save_path}"
     os.makedirs(dir, exist_ok=True)
     model.eval()
@@ -185,24 +185,25 @@ def analyze_model(model, dataloader, device, class_names=None, max_misclassified
     cm = confusion_matrix(all_labels, all_preds)
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
     disp.plot(xticks_rotation=45)
-    plt.title("Confusion Matrix")
+    plt.title(f"Confusion Matrix | Accuracy: {accruacy:.2f}%")
     plt.savefig(dir + "/confusion_matrix.png")
     plt.close()
 
     # Visualize misclassified images
     for i, (img, pred, label) in enumerate(misclassified):
-        plt.imshow(img.squeeze(0), cmap="gray")  # squeeze channel dimension
+        plt.imshow(img.squeeze(0))  # squeeze channel dimension
         title = f"Misclassified {i+1}: Pred={class_names[pred] if class_names else pred} | True={class_names[label] if class_names else label}"
         plt.title(title)
         plt.axis('off')
-        plt.savefig(dir + f"/misclassified_{i+1}.png")
+        plt.savefig(dir + f"/misclassified_{i+1}.png", dpi=500)
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
-    model_name = "20dB_RCS"
+    model_name = "20dB_RCS_pretrained_on_40dB_RCS"
+    dataset_name = "40dB_RCS"
 
-    create_dataset_parallel(8, 5000, save_path=f"data/{model_name}.pt")
+    # create_dataset_parallel(6, 5000, save_path=f"data/{model_name}.pt")
 
     model = swin_t(
         channels=1,
@@ -216,16 +217,18 @@ if __name__ == "__main__":
         relative_pos_embedding=True
     ).to(device)
 
-    train_loader, val_loader, test_loader = load_dataloaders(batch_size=32, root_dir=f"data/{model_name}.pt", random_seed=42)
+    # model.load_state_dict(torch.load(f"models/{model_name}.pt"))  # Load pre-trained model if available
 
-    criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
+    train_loader, val_loader, test_loader = load_dataloaders(batch_size=32, root_dir=f"data/{dataset_name}.pt", random_seed=42)
 
-    train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=100, save_path=f"models/{model_name}.pt")
+    # criterion = torch.nn.CrossEntropyLoss()
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
+
+    # train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=100, save_path=f"models/{model_name}.pt")
 
     model.load_state_dict(torch.load(f"models/{model_name}.pt"))
 
-    evaluate(model, test_loader, device)
+    accuracy = evaluate(model, test_loader, device)
 
-    class_names = [f"{i} target{'s' if i != 1 else ''}" for i in range(8)]  # or set your own
-    analyze_model(model, test_loader, device, class_names=class_names, max_misclassified=10, save_path=f"{model_name}.png")
+    class_names = [f"{i} target{'s' if i != 1 else ''}" for i in range(6)]  # or set your own
+    analyze_model(model, test_loader, device, class_names=class_names, max_misclassified=10, save_path=f"{model_name}/{dataset_name}", accruacy=accuracy)

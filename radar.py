@@ -86,7 +86,7 @@ class PulsedRadar:
         self.device=device
 
         self.pulse_compression_gain = self.tau * self.BW * self.n_pulses # Pulse compression gain
-        self.Pspec = 10**(40 / 10)  # Reference power (linear scale)
+        self.Pspec = 10**(20 / 10)  # Reference power (linear scale)
         self.Rspec = 750 # Reference range (m)
         
         # Time steps for one pulse
@@ -112,7 +112,7 @@ class PulsedRadar:
             # Calculate mean target range for scaling (or use first pulse)
             # Rtarget = r[0]
             # Power = (self.Rspec**4 / (np.array(Rtarget)**4)) * self.Pspec / self.pulse_compression_gain * RCS_target/self.RCS_ref
-            Power = self.Pspec / self.pulse_compression_gain * RCS_target
+            Power = self.Pspec / self.pulse_compression_gain #* RCS_target
             for pulse_idx in range(self.n_pulses):
                 t_pulse = pulse_idx * self.PRI
 
@@ -130,7 +130,6 @@ class PulsedRadar:
         noise = torch.exp(1j * 2 * np.pi * torch.rand(RX_signals.size(), device=self.device)) * self.noise * torch.normal(0, 1, RX_signals.size(), device=self.device)
 
         return RX_signals + noise
-
 
     def range_doppler(self, range_list, velocity_list):
         num_samples = int(self.fs * self.tau)
@@ -322,8 +321,9 @@ def create_dataset_parallel(n_targets, bursts_per_class, save_path="data/preproc
     torch.save((all_data, all_labels), save_path)
     print(f"✅ Dataset saved to: {save_path}")
 
-
-
 if __name__ == "__main__":
-    create_dataset_parallel(5, 500, save_path="data/test.pt")
+    # create_dataset_parallel(5, 500, save_path="data/test.pt")
     # create_dataset(5, 500, save_path="data/test.pt")
+    burst = generate_single_burst("cpu",num_targets=10)
+    plot_doppler(PulsedRadar(), burst[0].squeeze(0).numpy())
+    print("Done")
