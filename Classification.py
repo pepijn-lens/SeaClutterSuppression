@@ -200,10 +200,10 @@ def analyze_model(model, dataloader, device, class_names=None, max_misclassified
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
-    model_name = "20dB_RCS_pretrained_on_40dB_RCS"
-    dataset_name = "40dB_RCS"
+    model_name = "20dB_pretrained_on_40dB_RCS"
+    dataset_name = "20dB_RCS"
 
-    # create_dataset_parallel(6, 5000, save_path=f"data/{model_name}.pt")
+    # create_dataset_parallel(8, 5000, save_path=f"data/{dataset_name}.pt")
 
     model = swin_t(
         channels=1,
@@ -217,7 +217,7 @@ if __name__ == "__main__":
         relative_pos_embedding=True
     ).to(device)
 
-    # model.load_state_dict(torch.load(f"models/{model_name}.pt"))  # Load pre-trained model if available
+    model.load_state_dict(torch.load(f"models/{model_name}.pt"))  # Load pre-trained model if available
 
     train_loader, val_loader, test_loader = load_dataloaders(batch_size=32, root_dir=f"data/{dataset_name}.pt", random_seed=42)
 
@@ -230,5 +230,5 @@ if __name__ == "__main__":
 
     accuracy = evaluate(model, test_loader, device)
 
-    class_names = [f"{i} target{'s' if i != 1 else ''}" for i in range(6)]  # or set your own
+    class_names = [f"{i} target{'s' if i != 1 else ''}" for i in range(8)]  # or set your own
     analyze_model(model, test_loader, device, class_names=class_names, max_misclassified=10, save_path=f"{model_name}/{dataset_name}", accruacy=accuracy)

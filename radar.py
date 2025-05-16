@@ -112,7 +112,7 @@ class PulsedRadar:
             # Calculate mean target range for scaling (or use first pulse)
             # Rtarget = r[0]
             # Power = (self.Rspec**4 / (np.array(Rtarget)**4)) * self.Pspec / self.pulse_compression_gain * RCS_target/self.RCS_ref
-            Power = self.Pspec / self.pulse_compression_gain #* RCS_target
+            Power = self.Pspec / self.pulse_compression_gain * RCS_target
             for pulse_idx in range(self.n_pulses):
                 t_pulse = pulse_idx * self.PRI
 
