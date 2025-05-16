@@ -1,4 +1,4 @@
-from Swin.swin_regress import swin_t, swin_s  # or replace with direct class if in same file
+from swin_regress import swin_t, swin_s  # or replace with direct class if in same file
 
 import os
 import json
