@@ -7,8 +7,8 @@ import pandas as pd
 c0 = 299792458
 
 def plot_doppler(radar, rd_map):
-    if not os.path.exists("heatmaps"):
-        os.makedirs("heatmaps")
+    # if not os.path.exists("heatmaps"):
+    #     os.makedirs("heatmaps")
 
     # Calculate range bins (y-axis)
     num_samples = rd_map.shape[1]  # Fast-time samples (columns)
