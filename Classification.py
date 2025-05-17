@@ -201,7 +201,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
     model_name = "20dB_pretrained_on_40dB_RCS"
-    dataset_name = "20dB_RCS"
+    dataset_name = "40dB_RCS"
 
     # create_dataset_parallel(8, 5000, save_path=f"data/{dataset_name}.pt")
 
