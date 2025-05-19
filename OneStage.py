@@ -1,4 +1,4 @@
-from swin_class import swin_t, WindowAttention  # or replace with direct class if in same file
+from swin_class import swin_t,SwinStageOneModel, WindowAttention  # or replace with direct class if in same file
 
 import os
 import pandas as pd
@@ -200,25 +200,15 @@ def analyze_model(model, dataloader, device, class_names=None, max_misclassified
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
-    model_name = "20dB"
-    dataset_name = "20dB"
+    model_name = "20dB_one_stage_df2"
+    dataset_name = "40dB"
 
     # create_dataset_parallel(6, 2000, save_path=f"data/{dataset_name}.pt")
 
-    model = swin_t(
-        channels=1,
-        num_classes=6,
-        window_size=(2, 8),
-        hidden_dim=96,
-        layers=(2, 2, 6, 2),
-        heads=(3, 6, 12, 24),
-        head_dim=32,
-        downscaling_factors=(4, 2, 2, 2),
-        relative_pos_embedding=True
-    ).to(device)
+    model = SwinStageOneModel(in_channels=1, downscaling_factor=2, num_classes=6).to(device)  # Initialize model
     # print(model)
 
-    model.load_state_dict(torch.load(f"models/{model_name}.pt"))  # Load pre-trained model if available
+    # model.load_state_dict(torch.load(f"models/{model_name}.pt"))  # Load pre-trained model if available
 
     train_loader, val_loader, test_loader = load_dataloaders(batch_size=32, root_dir=f"data/{dataset_name}.pt", random_seed=42)
 

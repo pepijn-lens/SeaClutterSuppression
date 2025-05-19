@@ -50,24 +50,6 @@ class TargetSimulator:
 
         return truths
 
-    def get_range_velocity(self):
-        """Return per-target ranges and velocities arrays."""
-        all_ranges = []
-        all_velocities = []
-
-        for truth in self.truths:
-            ranges = []
-            velocities = []
-            for state in truth:
-                x, vx, y, vy = state.state_vector
-                r = np.sqrt(x**2 + y**2)
-                v_radial = (vx * x + vy * y) / r if r > 0 else 0
-                ranges.append(r)
-                velocities.append(v_radial)
-            all_ranges.append(np.array(ranges))
-            all_velocities.append(np.array(velocities))
-
-        return all_ranges, all_velocities
 
 class PulsedRadar:
     # Voor een range resolution van 1 meter, moet de bandbreedte 150 MHz zijn (dus de sampling rate 150*2 MHz). 
@@ -99,9 +81,8 @@ class PulsedRadar:
         s[(t < 0) | (t >= self.tau)] = 0
         return s
 
-    def rx_signals(self, r_list, v_list):
+    def rx_signals(self, r_list, v_list, num_targets=2):
         # r_list and v_list are lists of lists: one list per target
-        num_targets = len(r_list)
         RX_signals = torch.zeros((num_targets, self.n_pulses, self.t.size(0)), dtype=torch.complex64, device=self.device)
 
         for target_idx in range(num_targets):
@@ -112,12 +93,12 @@ class PulsedRadar:
             # Calculate mean target range for scaling (or use first pulse)
             # Rtarget = r[0]
             # Power = (self.Rspec**4 / (np.array(Rtarget)**4)) * self.Pspec / self.pulse_compression_gain * RCS_target/self.RCS_ref
-            Power = self.Pspec / self.pulse_compression_gain * RCS_target
+            Power = self.Pspec / self.pulse_compression_gain #* RCS_target
             for pulse_idx in range(self.n_pulses):
                 t_pulse = pulse_idx * self.PRI
 
-                doppler_freq = 2 * v[pulse_idx] * self.fc / c0
-                delay_time = 2 * r[pulse_idx] / c0
+                doppler_freq = 2 * v * self.fc / c0
+                delay_time = 2 * r / c0
 
                 RX_signal = self.s_tx(t_delay=delay_time)
                 doppler_phase = torch.exp(1j * 2 * torch.pi * doppler_freq * torch.tensor(t_pulse, dtype=torch.float32, device=self.device))
@@ -131,7 +112,7 @@ class PulsedRadar:
 
         return RX_signals + noise
 
-    def range_doppler(self, range_list, velocity_list):
+    def range_doppler(self, r, v, num_targets=2):
         num_samples = int(self.fs * self.tau)
         num_pulses = int(self.n_pulses)
 
@@ -142,7 +123,7 @@ class PulsedRadar:
 
         s_tx = self.s_tx()
         s_tx[:num_samples] *= fast_time_window
-        s_rx = self.rx_signals(range_list, velocity_list)
+        s_rx = self.rx_signals(r, v, num_targets=num_targets)
 
         S_tx = torch.fft.fft(s_tx)
         S_rx = torch.fft.fft(s_rx, dim=1)
@@ -161,28 +142,6 @@ class RadarDataGenerator:
         self.target_sim = target_sim
         self.burst_duration = self.radar.n_pulses * self.radar.tau
 
-    def interpolate_per_pulse(self, state1, state2, n_pulses):
-        # Linearly interpolate between two consecutive states
-        x1, vx1, y1, vy1 = state1.state_vector
-        x2, vx2, y2, vy2 = state2.state_vector - ((state2.state_vector - state1.state_vector) * (1 - self.radar.T))
-
-        interp_ranges = []
-        interp_velocities = []
-
-        for i in range(n_pulses):
-            alpha = i / n_pulses
-            x = (1 - alpha) * x1 + alpha * x2
-            y = (1 - alpha) * y1 + alpha * y2
-            vx = (1 - alpha) * vx1 + alpha * vx2
-            vy = (1 - alpha) * vy1 + alpha * vy2
-
-            r = np.sqrt(x**2 + y**2)
-            v_radial = (vx * x + vy * y) / r if r > 0 else 0
-            interp_ranges.append(r)
-            interp_velocities.append(v_radial)
-
-        return interp_ranges, interp_velocities
-
     def generate_data(self, num_targets=2):
         range_doppler_maps = []
         ground_truths = []
@@ -192,19 +151,19 @@ class RadarDataGenerator:
             v_list = []
 
             for target_idx in range(num_targets):
-                state1 = self.target_sim.truths[target_idx][step]
-                state2 = self.target_sim.truths[target_idx][step+1]
+                state = self.target_sim.truths[target_idx][step]
+                x, vx, y, vy = state.state_vector
 
-                r_array, v_array = self.interpolate_per_pulse(state1, state2, self.radar.n_pulses)
+                r = np.sqrt(x**2 + y**2)
+                v_radial = (vx * x + vy * y) / r if r > 0 else 0
 
-                r_list.append(r_array)
-                v_list.append(v_array)
+                r_list.append(r)
+                v_list.append(v_radial)
 
-            rd_map = self.radar.range_doppler(r_list, v_list)
-
+            rd_map = self.radar.range_doppler(r_list, v_list, num_targets=num_targets)
             range_doppler_maps.append(rd_map)
 
-            step_truth = [[r_list[target_idx][0], v_list[target_idx][0]] for target_idx in range(num_targets)]
+            step_truth = [[r_list[target_idx], v_list[target_idx]] for target_idx in range(num_targets)]
             ground_truths.append(step_truth)
 
         ground_truths = np.array(ground_truths)
@@ -271,7 +230,6 @@ def generate_single_burst(device, num_targets, shape=(64, 512), max_position=[50
     radar = PulsedRadar(noise=1, device=device)
     indices = calculate_resolution(radar, min_dopp=-37, max_dopp=38)
 
-    # Generate one burst
     state_vectors = [
         [np.random.randint(-max_position[0], max_position[0]),
          np.random.randint(-max_position[1], max_position[1]),
@@ -282,7 +240,7 @@ def generate_single_burst(device, num_targets, shape=(64, 512), max_position=[50
 
     target_sim = TargetSimulator(num_steps=1, state_vectors=state_vectors, randomness=[0.1, 0.1])
     data_generator = RadarDataGenerator(radar, target_sim)
-    range_doppler_maps, _ = data_generator.generate_data(num_targets=num_targets)
+    range_doppler_maps, ground_truth = data_generator.generate_data(num_targets=num_targets)
 
     rd_map = range_doppler_maps[0]
     rd_map = rd_map[indices, :512]  # shape: (64, 512)
@@ -294,7 +252,8 @@ def generate_single_burst(device, num_targets, shape=(64, 512), max_position=[50
     magnitude = 20 * torch.log10(torch.sqrt(tensor_data[..., 0]**2 + tensor_data[..., 1]**2) + 1e-10)
     magnitude = (magnitude - magnitude.mean()) / magnitude.std()
 
-    return magnitude.cpu().unsqueeze(0), num_targets  # Ensure it's on CPU for saving
+    return magnitude.cpu().unsqueeze(0), num_targets, ground_truth  # image: (1, 64, 512), targets: (num_targets, 2)
+
 
 def burst_worker(num_targets, device):
     return generate_single_burst(device=device, num_targets=num_targets)
@@ -314,9 +273,11 @@ def create_dataset_parallel(n_targets, bursts_per_class, save_path="data/preproc
         print(f"🔄 Generating {total_tasks} bursts in parallel...")
         for future in trange(total_tasks, desc="Progress"):
             result = futures[future].result()  # Get completed in order (instead of as_completed)
-            burst_data, label = result
+            # Inside the for future in trange loop
+            burst_data, _, target_coords = result
             all_data.append(burst_data)
-            all_labels.append(label)
+            all_labels.append(target_coords)
+
 
     torch.save((all_data, all_labels), save_path)
     print(f"✅ Dataset saved to: {save_path}")

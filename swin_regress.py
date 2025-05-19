@@ -198,7 +198,8 @@ class SwinTransformer(nn.Module):
 
         self.mlp_head = nn.Sequential(
             nn.LayerNorm(hidden_dim * 8),
-            nn.Linear(hidden_dim * 8, num_classes)
+            nn.Linear(hidden_dim * 8, num_classes),
+            nn.Sigmoid()
         )
 
     def forward(self, img):

@@ -85,7 +85,7 @@ class WindowAttention(nn.Module):
 
         self.to_out = nn.Linear(inner_dim, dim)
 
-    def forward(self, x):
+    def forward(self, x, return_attention=False):
         if self.shifted:
             x = self.cyclic_shift(x)
 
@@ -120,6 +120,9 @@ class WindowAttention(nn.Module):
 
         if self.shifted:
             out = self.cyclic_back_shift(out)
+
+        if return_attention:
+            return out, attn
         return out
 
 
@@ -180,6 +183,23 @@ class StageModule(nn.Module):
             x = regular_block(x)
             x = shifted_block(x)
         return x.permute(0, 3, 1, 2)
+    
+class SwinStageOneModel(nn.Module):
+    def __init__(self, in_channels=3, hidden_dim=96, layers=2, downscaling_factor=4, num_heads=3,
+                 head_dim=32, window_size=(2,8), relative_pos_embedding=True, num_classes=1000):
+        super().__init__()
+        self.stage1 = StageModule(in_channels, hidden_dim, layers, downscaling_factor,
+                                  num_heads, head_dim, window_size, relative_pos_embedding)
+        self.mlp_head = nn.Sequential(
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten(),
+            nn.LayerNorm(hidden_dim),
+            nn.Linear(hidden_dim, num_classes)
+        )
+
+    def forward(self, x):
+        x = self.stage1(x)  # Output shape: (B, C, H/4, W/4)
+        return self.mlp_head(x)
 
 
 class SwinTransformer(nn.Module):
