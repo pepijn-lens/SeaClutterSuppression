@@ -2,6 +2,7 @@ import torch
 from torch import nn, einsum
 import numpy as np
 from einops import rearrange, repeat
+# from Classification import RadarBurstDataset
 
 
 class CyclicShift(nn.Module):
@@ -22,7 +23,11 @@ class Residual(nn.Module):
         self.fn = fn
 
     def forward(self, x, **kwargs):
-        return self.fn(x, **kwargs) + x
+        out = self.fn(x, **kwargs)
+        # If attention is returned, out is a tuple (out, attn)
+        if isinstance(out, tuple):
+            return (out[0] + x, out[1])
+        return out + x
 
 
 class PreNorm(nn.Module):
@@ -32,7 +37,9 @@ class PreNorm(nn.Module):
         self.fn = fn
 
     def forward(self, x, **kwargs):
-        return self.fn(self.norm(x), **kwargs)
+        out = self.fn(self.norm(x), **kwargs)
+        # If attention is returned, out is a tuple (out, attn)
+        return out
 
 
 class FeedForward(nn.Module):
@@ -139,10 +146,16 @@ class SwinBlock(nn.Module):
         )))
         self.mlp_block = Residual(PreNorm(dim, FeedForward(dim, mlp_dim)))
 
-    def forward(self, x):
-        x = self.attention_block(x)
-        x = self.mlp_block(x)
-        return x
+    def forward(self, x, **kwargs):
+        out = self.attention_block(x, **kwargs)
+        # If attention is returned, out is a tuple (out, attn)
+        if isinstance(out, tuple):
+            out = out[0]
+        out = self.mlp_block(out)
+        # If attention is returned, out is a tuple (out, attn)
+        if isinstance(out, tuple):
+            out = out[0]
+        return out
 
 
 class PatchMerging(nn.Module):
@@ -183,23 +196,6 @@ class StageModule(nn.Module):
             x = regular_block(x)
             x = shifted_block(x)
         return x.permute(0, 3, 1, 2)
-    
-class SwinStageOneModel(nn.Module):
-    def __init__(self, in_channels=3, hidden_dim=96, layers=2, downscaling_factor=4, num_heads=3,
-                 head_dim=32, window_size=(2,8), relative_pos_embedding=True, num_classes=1000):
-        super().__init__()
-        self.stage1 = StageModule(in_channels, hidden_dim, layers, downscaling_factor,
-                                  num_heads, head_dim, window_size, relative_pos_embedding)
-        self.mlp_head = nn.Sequential(
-            nn.AdaptiveAvgPool2d((1, 1)),
-            nn.Flatten(),
-            nn.LayerNorm(hidden_dim),
-            nn.Linear(hidden_dim, num_classes)
-        )
-
-    def forward(self, x):
-        x = self.stage1(x)  # Output shape: (B, C, H/4, W/4)
-        return self.mlp_head(x)
 
 
 class SwinTransformer(nn.Module):
@@ -229,6 +225,64 @@ class SwinTransformer(nn.Module):
         x = x.mean(dim=[2, 3])
         return self.mlp_head(x)
 
+class SwinTwoStageModel(nn.Module):
+    def __init__(self, in_channels=1, hidden_dim=96, layers=(2, 2), downscaling_factors=(4, 2),
+                 num_heads=(3, 6), head_dim=32, window_size=(2, 8), relative_pos_embedding=True, num_classes=1000):
+        super().__init__()
+
+        # Stage 1: e.g., 1 → 96 channels
+        self.stage1 = StageModule(
+            in_channels=in_channels,
+            hidden_dimension=hidden_dim,
+            layers=layers[0],
+            downscaling_factor=downscaling_factors[0],
+            num_heads=num_heads[0],
+            head_dim=head_dim,
+            window_size=window_size,
+            relative_pos_embedding=relative_pos_embedding
+        )
+
+        # Stage 2: e.g., 96 → 192 channels
+        self.stage2 = StageModule(
+            in_channels=hidden_dim,
+            hidden_dimension=hidden_dim * 2,
+            layers=layers[1],
+            downscaling_factor=downscaling_factors[1],
+            num_heads=num_heads[1],
+            head_dim=head_dim,
+            window_size=window_size,
+            relative_pos_embedding=relative_pos_embedding
+        )
+
+        # Classification head
+        self.mlp_head = nn.Sequential(
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten(),
+            nn.LayerNorm(hidden_dim * 2),
+            nn.Linear(hidden_dim * 2, num_classes)
+        )
+
+    def forward(self, x):
+        x = self.stage1(x)  # (B, C=96, H/4, W/4)
+        x = self.stage2(x)  # (B, C=192, H/8, W/8)
+        return self.mlp_head(x)
+
+class SwinStageOneModel(nn.Module):
+    def __init__(self, in_channels=3, hidden_dim=96, layers=2, downscaling_factor=4, num_heads=3,
+                 head_dim=32, window_size=(2,8), relative_pos_embedding=True, num_classes=1000):
+        super().__init__()
+        self.stage1 = StageModule(in_channels, hidden_dim, layers, downscaling_factor,
+                                  num_heads, head_dim, window_size, relative_pos_embedding)
+        self.mlp_head = nn.Sequential(
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten(),
+            nn.LayerNorm(hidden_dim),
+            nn.Linear(hidden_dim, num_classes)
+        )
+
+    def forward(self, x):
+        x = self.stage1(x)  # Output shape: (B, C, H/4, W/4)
+        return self.mlp_head(x)
 
 # Convenience constructors
 def swin_t(hidden_dim=96, layers=(2, 2, 6, 2), heads=(3, 6, 12, 24), **kwargs):

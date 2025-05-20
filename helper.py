@@ -4,6 +4,9 @@ import numpy as np
 from matplotlib import pyplot as plt
 import pandas as pd 
 
+from Classification import RadarBurstDataset
+from swin_class import swin_t, SwinStageOneModel, SwinTwoStageModel
+
 c0 = 299792458
 
 def plot_doppler(radar, rd_map):
@@ -142,3 +145,100 @@ def calculate_dataset_stats(track_numbers, burst_numbers):
     
     return avg_mean, avg_std
 
+
+def plot_attention(attn_map, head=0, window_idx=0):
+    """
+    Plot attention map for a single head and window.
+    attn_map: (B, H, num_windows, win², win²)
+    """
+    # Remove batch dimension
+    attn = attn_map[0, head, window_idx]  # (win², win²)
+
+    plt.figure(figsize=(6, 5))
+    plt.imshow(attn.detach().cpu(), cmap='viridis')
+    plt.colorbar()
+    plt.title(f'Head {head} - Window {window_idx}')
+    plt.xlabel('Key Tokens')
+    plt.ylabel('Query Tokens')
+    plt.show()
+
+# ...existing code...
+
+if __name__ == "__main__":
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    model_name = "20dB"
+    dataset_name = "20dB"
+
+    # Load model
+    model = swin_t(
+        channels=1,
+        num_classes=6,
+        window_size=(2, 8),
+        hidden_dim=96,
+        layers=(2, 2, 6, 2),
+        heads=(3, 6, 12, 24),
+        head_dim=32,
+        downscaling_factors=(4, 2, 2, 2),
+        relative_pos_embedding=True
+    ).to(device)
+    model.load_state_dict(torch.load(f"models/{model_name}.pt", map_location=device))
+    model.eval()
+    # print(model)
+
+    # Load dataset and sample
+    dataset = RadarBurstDataset(pt_file_path=f"data/{dataset_name}.pt")
+    img, label = dataset[21000]
+    img = img.unsqueeze(0).to(device)  # (1, 1, 64, 512)
+
+    # Hook to capture attention maps
+    attention_maps = []
+
+    def hook_fn(module, input, output):
+        # output: (out, attn)
+        if isinstance(output, tuple):
+            attention_maps.append(output[1].detach().cpu())
+
+    # Find the first WindowAttention layer in stage1
+    # first_block = model.stage1.layers[0][0].attention_block.fn
+    third_block = model.stage4.layers[0][1].attention_block.fn
+    # handle = first_block.register_forward_hook(hook_fn)
+    handle = third_block.register_forward_hook(hook_fn)
+
+    # Forward pass with return_attention=True for the hooked layer
+    # Patch: temporarily monkey-patch the forward method to return attention
+    orig_forward = third_block.forward
+    def forward_with_attention(x):
+        return orig_forward(x, return_attention=True)
+    third_block.forward = forward_with_attention
+
+    with torch.no_grad():
+        _ = model(img)
+
+    # Restore original forward
+    third_block.forward = orig_forward
+    handle.remove()
+
+    # Save all attention maps (for all heads and windows)
+    if attention_maps:
+        attn = attention_maps[0]  # shape: (B, heads, windows, N, N)
+        dir ="attention_maps/stage1/layer1/"
+        os.makedirs(dir, exist_ok=True)
+        num_heads = attn.shape[1]
+        num_windows = attn.shape[2]
+        for head in range(num_heads):
+            for window_idx in range(num_windows):
+                attn_img = attn[0, head, window_idx].numpy()
+                plt.figure(figsize=(6, 5))
+                plt.imshow(attn_img, cmap="viridis")
+                plt.colorbar()
+                plt.title(f"Head {head} - Window {window_idx}")
+                plt.xlabel('Key Tokens')
+                plt.ylabel('Query Tokens')
+                plt.tight_layout()
+                plt.savefig(f"{dir}attn_head{head}_window{window_idx}.png")
+                plt.close()
+        print(f"Saved {num_heads * num_windows} attention maps to 'attention_maps/'")
+    else:
+        print("No attention maps captured.")
+# ...existing code...

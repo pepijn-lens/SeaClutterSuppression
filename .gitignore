@@ -3,3 +3,5 @@ data/
 logs/
 models/
 evaluation/
+attention_maps/
+confusion_matrices/
