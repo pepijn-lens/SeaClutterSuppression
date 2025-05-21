@@ -1,5 +1,5 @@
 from swin_class import swin_t, SwinStageOneModel, SwinTwoStageModel  # or replace with direct class if in same file
-
+from new_swin import radar_swin_t
 import os
 import torch
 from torch.utils.data import Dataset, random_split, DataLoader
@@ -40,8 +40,6 @@ def load_dataloaders(root_dir="swin_bursts", batch_size=16, num_workers=0,random
 
     return train_loader, val_loader, test_loader
 
-import matplotlib.pyplot as plt
-
 def train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=10, save_path="best_model.pt", patience=10):
     best_val_acc = 0.0
     best_epoch = -1
@@ -71,7 +69,7 @@ def train(model, train_loader, val_loader, criterion, optimizer, device, num_epo
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
-            if (i + 1) % 50 == 0:
+            if (i + 1) % 100 == 0:
                 print(f"Batch {i+1}/{len(train_loader)} | Loss: {loss.item():.4f}")
 
         train_acc = 100. * correct / total
@@ -192,44 +190,42 @@ def analyze_model(model, dataloader, device, class_names=None, max_misclassified
         plt.axis('off')
         plt.savefig(dir + f"/misclassified_{i+1}.png", dpi=500)
 
+
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
-    model_name = "40dB_one_stage"
+    model_name = "new_test_hiddim_32"
     dataset_name = "20dB"
 
     # create_dataset_parallel(6, 2000, save_path=f"data/{dataset_name}.pt")
 
+    model = radar_swin_t(
+        in_channels=1,
+        num_classes=6,
+        hidden_dim=128,
+        layers=4,
+        heads=4,
+        head_dim=32,
+        patch_size=8
+    ).to(device)
+
     # model = swin_t(
-    #     channels=1,
-    #     num_classes=6,
-    #     window_size=(2, 8),
-    #     hidden_dim=96,
-    #     layers=(2, 2, 6, 2),
-    #     heads=(3, 6, 12, 24),
-    #     head_dim=32,
-    #     downscaling_factors=(4, 2, 2, 2),
-    #     relative_pos_embedding=True
-    # ).to(device)
+    #     channels=1,           
+    #     num_classes=6          
+    # ).to(device) # Initialize model
 
-    model = SwinStageOneModel(
-        in_channels=1,           
-        hidden_dim=32,
-        layers=2,
-        downscaling_factor=4,
-        num_heads=6,
-        num_classes=6          
-    ).to(device) # Initialize model
-    print(model)
+    # print(model)
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f'{trainable_params:,} trainable parameters')
 
-    model.load_state_dict(torch.load(f"models/{model_name}.pt"))  # Load pre-trained model if available
+    # model.load_state_dict(torch.load(f"models/{model_name}.pt"))  # Load pre-trained model if available
 
     dataset = RadarBurstDataset(pt_file_path=f"data/{dataset_name}.pt")
 
-    train_loader, val_loader, test_loader = load_dataloaders(batch_size=32, root_dir=f"data/{dataset_name}.pt", random_seed=42)
+    train_loader, val_loader, test_loader = load_dataloaders(batch_size=64, root_dir=f"data/{dataset_name}.pt", random_seed=42)
 
     criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
 
     train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=100, save_path=f"models/{model_name}.pt")
 

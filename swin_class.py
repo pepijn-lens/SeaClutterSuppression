@@ -2,16 +2,12 @@ import torch
 from torch import nn, einsum
 import numpy as np
 from einops import rearrange, repeat
-# from Classification import RadarBurstDataset
 
 
 class CyclicShift(nn.Module):
     def __init__(self, displacement):
         super().__init__()
-        if isinstance(displacement, int):
-            self.displacement = (displacement, displacement)
-        else:
-            self.displacement = displacement
+        self.displacement = (displacement, displacement)
 
     def forward(self, x):
         return torch.roll(x, shifts=self.displacement, dims=(1, 2))
@@ -23,11 +19,7 @@ class Residual(nn.Module):
         self.fn = fn
 
     def forward(self, x, **kwargs):
-        out = self.fn(x, **kwargs)
-        # If attention is returned, out is a tuple (out, attn)
-        if isinstance(out, tuple):
-            return (out[0] + x, out[1])
-        return out + x
+        return self.fn(x, **kwargs) + x
 
 
 class PreNorm(nn.Module):
@@ -37,9 +29,7 @@ class PreNorm(nn.Module):
         self.fn = fn
 
     def forward(self, x, **kwargs):
-        out = self.fn(self.norm(x), **kwargs)
-        # If attention is returned, out is a tuple (out, attn)
-        return out
+        return self.fn(self.norm(x), **kwargs)
 
 
 class FeedForward(nn.Module):

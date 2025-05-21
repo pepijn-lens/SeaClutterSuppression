@@ -3,7 +3,7 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 import pandas as pd 
-
+from new_swin import radar_swin_t
 from Classification import RadarBurstDataset
 from swin_class import swin_t, SwinStageOneModel, SwinTwoStageModel
 
@@ -167,20 +167,28 @@ def plot_attention(attn_map, head=0, window_idx=0):
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model_name = "20dB"
+    model_name = "new_test_drop"
     dataset_name = "20dB"
 
-    # Load model
-    model = swin_t(
-        channels=1,
+    # # Load model
+    # model = swin_t(
+    #     channels=1,
+    #     num_classes=6,
+    #     window_size=(2, 8),
+    #     hidden_dim=96,
+    #     layers=(2, 2, 6, 2),
+    #     heads=(3, 6, 12, 24),
+    #     head_dim=32,
+    #     downscaling_factors=(4, 2, 2, 2),
+    #     relative_pos_embedding=True
+    # ).to(device)
+
+    model = radar_swin_t(
+        in_channels=1,
         num_classes=6,
-        window_size=(2, 8),
-        hidden_dim=96,
-        layers=(2, 2, 6, 2),
-        heads=(3, 6, 12, 24),
-        head_dim=32,
-        downscaling_factors=(4, 2, 2, 2),
-        relative_pos_embedding=True
+        layers=2,
+        heads=4,
+        patch_size=4
     ).to(device)
     model.load_state_dict(torch.load(f"models/{model_name}.pt", map_location=device))
     model.eval()
@@ -201,7 +209,7 @@ if __name__ == "__main__":
 
     # Find the first WindowAttention layer in stage1
     # first_block = model.stage1.layers[0][0].attention_block.fn
-    third_block = model.stage4.layers[0][1].attention_block.fn
+    third_block = model.stage1.layers[0][0].attention_block.fn
     # handle = first_block.register_forward_hook(hook_fn)
     handle = third_block.register_forward_hook(hook_fn)
 
