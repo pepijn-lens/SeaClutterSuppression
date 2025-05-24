@@ -4,15 +4,12 @@ import numpy as np
 from matplotlib import pyplot as plt
 import pandas as pd 
 from new_swin import radar_swin_t
-from Classification import RadarBurstDataset
+from Classification import RadarDataset
 from swin_class import swin_t, SwinStageOneModel, SwinTwoStageModel
 
 c0 = 299792458
 
 def plot_doppler(radar, rd_map):
-    # if not os.path.exists("heatmaps"):
-    #     os.makedirs("heatmaps")
-
     # Calculate range bins (y-axis)
     num_samples = rd_map.shape[1]  # Fast-time samples (columns)
     max_range = (c0 * radar.PRI) / 2 * (num_samples/(radar.PRI*radar.fs)) # Max range (m)
@@ -28,7 +25,7 @@ def plot_doppler(radar, rd_map):
     plt.figure(figsize=(10, 8))
     plt.imshow(
         rd_map.T,
-        extent=[velocity_bins[0], velocity_bins[-1], range_bins[-1], range_bins[0]],  # Set axis limits
+        # extent=[velocity_bins[0], velocity_bins[-1], range_bins[-1], range_bins[0]],  # Set axis limits
         aspect='auto',
         interpolation='nearest',
     )
@@ -195,7 +192,7 @@ if __name__ == "__main__":
     # print(model)
 
     # Load dataset and sample
-    dataset = RadarBurstDataset(pt_file_path=f"data/{dataset_name}.pt")
+    dataset = RadarDataset(pt_file_path=f"data/{dataset_name}.pt")
     img, label = dataset[21000]
     img = img.unsqueeze(0).to(device)  # (1, 1, 64, 512)
 

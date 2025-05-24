@@ -7,7 +7,7 @@ from einops import rearrange, repeat
 class CyclicShift(nn.Module):
     def __init__(self, displacement):
         super().__init__()
-        self.displacement = (displacement, displacement)
+        self.displacement = displacement
 
     def forward(self, x):
         return torch.roll(x, shifts=self.displacement, dims=(1, 2))
