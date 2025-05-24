@@ -276,8 +276,8 @@ if __name__ == "__main__":
     # logger.info(f"Best params: {study.best_trial.params}")
 
     # model_name = "8patch-medium.pt"
-    model_name = "optuna_trial_6-10dBtraining.pt"
-    dataset_pt = "data/10dB.pt"
+    model_name = "optuna/optuna_trial_6-20dBRCStraining.pt"
+    dataset_pt = "data/30dB.pt"
     
     model = radar_swin_t(
         in_channels=1,
@@ -312,27 +312,27 @@ if __name__ == "__main__":
     # ).to(device) # Initialize model
 
     # print(model)
-    # trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    # print(f'{trainable_params:,} trainable parameters')
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f'{trainable_params:,} trainable parameters')
 
-    model.load_state_dict(torch.load('optuna_trial_6-20dBtraining.pt'))  # Load pre-trained model if available
+    model.load_state_dict(torch.load(model_name))  # Load pre-trained model if available
 
-    train_loader, val_loader, test_loader = load_dataloaders(batch_size=32, root_dir=dataset_pt, random_seed=6)
+    # train_loader, val_loader, test_loader = load_dataloaders(batch_size=32, root_dir=dataset_pt, random_seed=6)
 
-    criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4, weight_decay=0.01176332551865265)
+    # criterion = torch.nn.CrossEntropyLoss()
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4, weight_decay=0.002)
 
-    total_steps = 100 * len(train_loader)
-    warmup_steps = int(0.1 * total_steps)  # 10% warmup
+    # total_steps = 100 * len(train_loader)
+    # warmup_steps = int(0.1 * total_steps)  # 10% warmup
 
-    scheduler = get_cosine_schedule_with_warmup(
-        optimizer, warmup_steps=warmup_steps, total_steps=total_steps, min_lr_ratio=0.01
-    )
+    # scheduler = get_cosine_schedule_with_warmup(
+    #     optimizer, warmup_steps=warmup_steps, total_steps=total_steps, min_lr_ratio=0.01
+    # )
 
-    train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=100, save_path=model_name, scheduler=scheduler)
+    # train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=100, save_path=model_name, scheduler=scheduler)
 
-    # dataset = RadarDataset(data_path=dataset_pt)
-    # test_loader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=0)
+    dataset = RadarDataset(data_path=dataset_pt)
+    test_loader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=0)
 
     accuracy = evaluate(model, test_loader, device)
 

@@ -36,7 +36,17 @@ class Residual(nn.Module):
         self.fn = fn
 
     def forward(self, x, **kwargs):
-        return self.fn(x, **kwargs) + x
+        # If input is a tuple, operate on the first element, pass through the rest
+        if isinstance(x, tuple):
+            out = self.fn(x[0], **kwargs)
+            if isinstance(out, tuple):
+                return (out[0] + x[0], *out[1:])
+            return out + x[0]
+        else:
+            out = self.fn(x, **kwargs)
+            if isinstance(out, tuple):
+                return (out[0] + x, *out[1:])
+            return out + x
 
 
 
@@ -47,7 +57,14 @@ class PreNorm(nn.Module):
         self.fn = fn
 
     def forward(self, x, **kwargs):
-        return self.fn(self.norm(x), **kwargs)
+        if isinstance(x, tuple):
+            normed = self.norm(x[0])
+            out = self.fn(normed, **kwargs)
+            if isinstance(out, tuple):
+                return (out[0], *out[1:])
+            return out
+        else:
+            return self.fn(self.norm(x), **kwargs)
 
 
 class FeedForward(nn.Module):

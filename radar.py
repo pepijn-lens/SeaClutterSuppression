@@ -90,7 +90,7 @@ class PulsedRadar:
 
         for target_idx in range(len(r_list)):
             if self.rcs_variation:
-                RCS_target = np.random.uniform(0.1, 1)  # m^2
+                RCS_target = np.random.uniform(0.25, 1)  # m^2
                 Power = self.Pspec / self.pulse_compression_gain * RCS_target
             else:
                 Power = self.Pspec / self.pulse_compression_gain
@@ -144,7 +144,7 @@ class PulsedRadar:
     
 
 def generate_single_burst(device, num_targets, shape=(64, 512), max_position=[500, 27.5]):
-    radar = PulsedRadar(noise=0, rcs_variation=False, snr=20, device=device)
+    radar = PulsedRadar(noise=1, rcs_variation=True, snr=20, device=device)
 
     state_vectors = [
         [np.random.randint(-max_position[0], max_position[0]),
@@ -185,11 +185,11 @@ def create_dataset_parallel(n_targets, bursts_per_class, save_path="data/name.pt
     all_ranges = []
     all_velocities = []
 
-    total_tasks = (n_targets-1) * bursts_per_class
+    total_tasks = (n_targets) * bursts_per_class
     futures = []
 
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
-        for num_targets in range(1, n_targets):
+        for num_targets in range(n_targets):
             for _ in range(bursts_per_class):
                 futures.append(executor.submit(burst_worker, num_targets, device))
 
@@ -226,8 +226,8 @@ if __name__ == "__main__":
 
     # Generate dataset
     n_targets = 6
-    bursts_per_class = 1000
-    create_dataset_parallel(n_targets, bursts_per_class, save_path='data/no_noise.pt', device=device, num_workers=8)
+    bursts_per_class = 5000
+    create_dataset_parallel(n_targets, bursts_per_class, save_path='data/20dB_RCS.pt', device=device, num_workers=10)
 
 
 

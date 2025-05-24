@@ -5,7 +5,6 @@ from matplotlib import pyplot as plt
 import pandas as pd 
 from new_swin import radar_swin_t
 from Classification import RadarDataset
-from swin_class import swin_t, SwinStageOneModel, SwinTwoStageModel
 
 c0 = 299792458
 
@@ -164,36 +163,30 @@ def plot_attention(attn_map, head=0, window_idx=0):
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model_name = "new_test_drop"
-    dataset_name = "20dB"
-
-    # # Load model
-    # model = swin_t(
-    #     channels=1,
-    #     num_classes=6,
-    #     window_size=(2, 8),
-    #     hidden_dim=96,
-    #     layers=(2, 2, 6, 2),
-    #     heads=(3, 6, 12, 24),
-    #     head_dim=32,
-    #     downscaling_factors=(4, 2, 2, 2),
-    #     relative_pos_embedding=True
-    # ).to(device)
+    model_name = "optuna_trial_6-20dBRCStraining.pt"
+    dataset_name = "20dB_RCS"
 
     model = radar_swin_t(
         in_channels=1,
         num_classes=6,
-        layers=2,
+        hidden_dim=128,
+        window_size=(2, 8),
+        layers=6,
         heads=4,
-        patch_size=4
+        head_dim=32,
+        patch_size=8
     ).to(device)
-    model.load_state_dict(torch.load(f"models/{model_name}.pt", map_location=device))
+    model.load_state_dict(torch.load(f"optuna/{model_name}", map_location=device))
     model.eval()
     # print(model)
 
     # Load dataset and sample
-    dataset = RadarDataset(pt_file_path=f"data/{dataset_name}.pt")
-    img, label = dataset[21000]
+    dataset = RadarDataset(data_path=f"data/{dataset_name}.pt")
+    img, label = dataset[23000]
+    # plt.figure()
+    # plt.imshow(img[0].squeeze(0).numpy())
+    # plt.savefig("attention_maps/sample_image.png")
+    # plt.show()
     img = img.unsqueeze(0).to(device)  # (1, 1, 64, 512)
 
     # Hook to capture attention maps
@@ -204,30 +197,25 @@ if __name__ == "__main__":
         if isinstance(output, tuple):
             attention_maps.append(output[1].detach().cpu())
 
-    # Find the first WindowAttention layer in stage1
-    # first_block = model.stage1.layers[0][0].attention_block.fn
-    third_block = model.stage1.layers[0][0].attention_block.fn
-    # handle = first_block.register_forward_hook(hook_fn)
-    handle = third_block.register_forward_hook(hook_fn)
+    window_attention = model.stage1.layers[2][0].attention_block.fn.fn
+    handle = window_attention.register_forward_hook(hook_fn)
 
-    # Forward pass with return_attention=True for the hooked layer
-    # Patch: temporarily monkey-patch the forward method to return attention
-    orig_forward = third_block.forward
-    def forward_with_attention(x):
-        return orig_forward(x, return_attention=True)
-    third_block.forward = forward_with_attention
+    orig_forward = window_attention.forward
+    def forward_with_attention(x, **kwargs):
+        return orig_forward(x, return_attention=True, **kwargs)
+    window_attention.forward = forward_with_attention
 
-    with torch.no_grad():
-        _ = model(img)
-
-    # Restore original forward
-    third_block.forward = orig_forward
-    handle.remove()
+    try:
+        with torch.no_grad():
+            _ = model(img)
+    finally:
+        window_attention.forward = orig_forward
+        handle.remove()
 
     # Save all attention maps (for all heads and windows)
     if attention_maps:
         attn = attention_maps[0]  # shape: (B, heads, windows, N, N)
-        dir ="attention_maps/stage1/layer1/"
+        dir ="attention_maps/layer3/"
         os.makedirs(dir, exist_ok=True)
         num_heads = attn.shape[1]
         num_windows = attn.shape[2]
