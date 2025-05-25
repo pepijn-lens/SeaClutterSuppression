@@ -6,3 +6,5 @@ evaluation/
 attention_maps/
 confusion_matrices/
 optuna/
+images/
+MaritimeRadarPPI/
