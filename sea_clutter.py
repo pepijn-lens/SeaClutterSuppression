@@ -116,6 +116,20 @@ def _inject_bragg(rd: np.ndarray, prf: float, offset_hz: float, width_hz: float,
     )
     rd *= 1.0 + (10.0 ** (boost_db / 10.0) - 1.0) * weight[np.newaxis, :]
 
+def get_clutter_params_for_sea_state(state: int) -> ClutterParams:
+    """Map WMO sea states (1..9) to model parameters."""
+    configs = {
+        1: {'mean_power_db': -30.0, 'shape_param': 2.0, 'ar_coeff': 0.995},
+        3: {'mean_power_db': -25.0, 'shape_param': 1.0, 'ar_coeff': 0.990},
+        5: {'mean_power_db': -20.0, 'shape_param': 0.5, 'ar_coeff': 0.980},
+        7: {'mean_power_db': -15.0, 'shape_param': 0.2, 'ar_coeff': 0.950},
+        9: {'mean_power_db': -10.0, 'shape_param': 0.1, 'ar_coeff': 0.900},
+    }
+    if state not in configs:
+        raise ValueError(f"Unsupported sea state {state}; choose from {list(configs)}")
+    params = configs[state]
+    return ClutterParams(**params)
+
 # ────────────────────────────────────────────────────────────────────────────────
 # Single-frame API
 # ────────────────────────────────────────────────────────────────────────────────
@@ -226,8 +240,8 @@ def animate_sequence(
 # ────────────────────────────────────────────────────────────────────────────────
 # Demo entry point (with moving blob)
 # ────────────────────────────────────────────────────────────────────────────────
-def simulate_example(save_gif: bool = False) -> None:
-    rp = RadarParams(); cp = ClutterParams(); sp = SequenceParams()
+def simulate_example(save_gif: bool = False, cp = ClutterParams()) -> None:
+    rp = RadarParams(); cp = cp; sp = SequenceParams()
     # Blob target: central range bin=180, Doppler=10Hz, power=1, moving inward at 2 m/s
     tgt = Target(rng_idx=180, doppler_hz=10.0, power=1.0, rng_speed_mps=-2.0)
     rdm_list = simulate_sequence(rp, cp, sp, targets=[tgt])
@@ -241,5 +255,11 @@ if __name__ == "__main__":
     )
     parser.add_argument("--gif", action="store_true",
                         help="Save the animation as 'sea_clutter.gif'.")
+    parser.add_argument("--state", type=int, choices=[1,3,5,7,9],
+                        default=5,
+                        help="WMO sea state (1,3,5,7,9).")
     args = parser.parse_args()
-    simulate_example(save_gif=args.gif)
+    # grab clutter params for the requested sea state
+    cp = get_clutter_params_for_sea_state(args.state)
+    # run the built-in demo but override the ClutterParams
+    simulate_example(save_gif=args.gif, cp=cp)
