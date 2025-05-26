@@ -8,3 +8,18 @@ confusion_matrices/
 optuna/
 images/
 MaritimeRadarPPI/
+sea_clutter/segmentation_dataset/
+sea_clutter/sea_state*
+segmentation_dataset/
+
+# Ignore Python cache files
+__pycache__/
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+# Ignore virtual environment directories
+venv/
+# Ignore IDE specific files
+.DS_Store
+# Ignore environment files
+
+
