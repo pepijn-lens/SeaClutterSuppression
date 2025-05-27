@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 
 # Import your existing classes
-from sea_clutter_range_doppler import (
+from sea_clutter.sea_clutter import (
     RadarParams, ClutterParams, Target, SequenceParams,
     simulate_sea_clutter, compute_range_doppler, add_target_blob,
     get_clutter_params_for_sea_state
@@ -70,9 +70,9 @@ class SegmentationDataGenerator:
             wave_speed_mps=2.0
         )
         
-        # Available sea states
-        self.sea_states = [1, 3, 5, 7, 9]
-        
+        # Available sea states - updated to only include 1, 3, 5, 7
+        self.sea_states = [1, 3, 5, 7]
+
     def generate_target_configurations(
         self,
         n_scenarios: int = 1000,
@@ -170,11 +170,61 @@ class SegmentationDataGenerator:
         
         return mask
     
+    def apply_augmentation(self, rdm_array: np.ndarray, mask_array: np.ndarray, 
+                          augmentation_type: str = "none") -> Tuple[np.ndarray, np.ndarray]:
+        """Apply data augmentation to RDM and mask arrays."""
+        if augmentation_type == "none":
+            return rdm_array, mask_array
+        
+        augmented_rdm = rdm_array.copy()
+        augmented_mask = mask_array.copy()
+        
+        if augmentation_type == "shift_range":
+            # Shift in range direction (vertical)
+            shift = np.random.randint(-20, 21)  # Shift by up to 20 bins
+            if shift != 0:
+                for frame_idx in range(augmented_rdm.shape[0]):
+                    augmented_rdm[frame_idx] = np.roll(augmented_rdm[frame_idx], shift, axis=0)
+                    augmented_mask[frame_idx] = np.roll(augmented_mask[frame_idx], shift, axis=0)
+        
+        elif augmentation_type == "shift_doppler":
+            # Shift in Doppler direction (horizontal)
+            shift = np.random.randint(-20, 21)  # Shift by up to 20 bins
+            if shift != 0:
+                for frame_idx in range(augmented_rdm.shape[0]):
+                    augmented_rdm[frame_idx] = np.roll(augmented_rdm[frame_idx], shift, axis=1)
+                    augmented_mask[frame_idx] = np.roll(augmented_mask[frame_idx], shift, axis=1)
+        
+        elif augmentation_type == "rotate_90":
+            # 90-degree rotation
+            for frame_idx in range(augmented_rdm.shape[0]):
+                augmented_rdm[frame_idx] = np.rot90(augmented_rdm[frame_idx])
+                augmented_mask[frame_idx] = np.rot90(augmented_mask[frame_idx])
+        
+        elif augmentation_type == "rotate_180":
+            # 180-degree rotation
+            for frame_idx in range(augmented_rdm.shape[0]):
+                augmented_rdm[frame_idx] = np.rot90(augmented_rdm[frame_idx], 2)
+                augmented_mask[frame_idx] = np.rot90(augmented_mask[frame_idx], 2)
+        
+        elif augmentation_type == "flip_range":
+            # Flip along range axis
+            augmented_rdm = np.flip(augmented_rdm, axis=1)
+            augmented_mask = np.flip(augmented_mask, axis=1)
+        
+        elif augmentation_type == "flip_doppler":
+            # Flip along Doppler axis
+            augmented_rdm = np.flip(augmented_rdm, axis=2)
+            augmented_mask = np.flip(augmented_mask, axis=2)
+        
+        return augmented_rdm, augmented_mask
+
     def generate_single_scenario(
         self, 
-        scenario: Dict[str, Any]
-    ) -> Tuple[np.ndarray, np.ndarray, Dict]:
-        """Generate single scenario with RDM and ground truth mask."""
+        scenario: Dict[str, Any],
+        apply_augmentation: bool = False
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict]:
+        """Generate single scenario with RDM, ground truth mask, and targets-only mask."""
         # Reconstruct objects
         rp = RadarParams(**scenario['radar_params'])
         cp = ClutterParams(**scenario['clutter_params'])
@@ -185,6 +235,7 @@ class SegmentationDataGenerator:
         # Generate sequence
         rdm_list = []
         mask_list = []
+        targets_only_list = []
         
         dt = 1.0 / sp.frame_rate_hz
         texture = None
@@ -201,18 +252,24 @@ class SegmentationDataGenerator:
                 rp, cp, texture=texture, init_speckle=speckle_tail
             )
             
-            # Add targets and update positions
+            # Create targets-only version (no clutter)
+            targets_only_td = np.zeros_like(clutter_td)
+            
+            # Add targets to both clutter and targets-only versions
             for i, tgt in enumerate(base_targets):
                 add_target_blob(clutter_td, tgt, rp)
+                add_target_blob(targets_only_td, tgt, rp)
                 # Update position for next frame
                 tgt.rng_idx = max(0, min(rp.n_ranges - 1, 
                     tgt.rng_idx + int(tgt.rng_speed_mps * dt / rp.range_resolution)))
                 # Also update the segmentation target for mask generation
                 seg_targets[i].rng_idx = tgt.rng_idx
             
-            # Compute range-doppler map
+            # Compute range-doppler maps
             rdm = compute_range_doppler(clutter_td, rp, cp)
+            targets_only_rdm = compute_range_doppler(targets_only_td, rp, cp)
             rdm_list.append(rdm)
+            targets_only_list.append(targets_only_rdm)
             
             # Create ground truth mask
             mask = self.create_ground_truth_mask(seg_targets, frame_idx)
@@ -221,19 +278,32 @@ class SegmentationDataGenerator:
         # Convert to arrays
         rdm_array = np.array(rdm_list)  # Shape: (n_frames, n_ranges, n_doppler)
         mask_array = np.array(mask_list)  # Shape: (n_frames, n_ranges, n_doppler)
+        targets_only_array = np.array(targets_only_list)  # Shape: (n_frames, n_ranges, n_doppler)
         
-        return rdm_array, mask_array, scenario
+        # Apply augmentation if requested
+        if apply_augmentation:
+            augmentation_types = ["none", "shift_range", "shift_doppler", "rotate_90", "rotate_180", "flip_range", "flip_doppler"]
+            aug_type = np.random.choice(augmentation_types)
+            rdm_array, mask_array = self.apply_augmentation(rdm_array, mask_array, aug_type)
+            targets_only_array, _ = self.apply_augmentation(targets_only_array, mask_array, aug_type)
+            scenario['augmentation'] = aug_type
+        else:
+            scenario['augmentation'] = "none"
+        
+        return rdm_array, mask_array, targets_only_array, scenario
 
 def worker_function(args):
     """Worker function for multiprocessing."""
-    scenario, output_dir = args
+    scenario, output_dir, apply_augmentation = args
     generator = SegmentationDataGenerator(output_dir)
     
     try:
-        rdm_data, mask_data, metadata = generator.generate_single_scenario(scenario)
-        return rdm_data, mask_data, metadata, None
+        rdm_data, mask_data, targets_only_data, metadata = generator.generate_single_scenario(
+            scenario, apply_augmentation=apply_augmentation
+        )
+        return rdm_data, mask_data, targets_only_data, metadata, None
     except Exception as e:
-        return None, None, None, str(e)
+        return None, None, None, None, str(e)
 
 class SegmentationBatchProcessor:
     """Batch processor for segmentation datasets."""
@@ -242,125 +312,12 @@ class SegmentationBatchProcessor:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
         self.n_workers = n_workers or max(1, mp.cpu_count() - 1)
-        
-    def save_hdf5_dataset(
-        self,
-        scenarios: List[Dict[str, Any]],
-        batch_size: int = 50,
-        compress: bool = True
-    ):
-        """Save segmentation dataset in HDF5 format."""
-        print(f"Generating {len(scenarios)} scenarios using {self.n_workers} workers...")
-        
-        h5_path = self.output_dir / "segmentation_dataset.h5"
-        
-        with h5py.File(h5_path, 'w') as f:
-            # Create groups for different data types
-            rdm_group = f.create_group("range_doppler_maps")
-            mask_group = f.create_group("ground_truth_masks")
-            meta_group = f.create_group("metadata")
-            
-            # Process in batches
-            for batch_start in range(0, len(scenarios), batch_size):
-                batch_end = min(batch_start + batch_size, len(scenarios))
-                batch_scenarios = scenarios[batch_start:batch_end]
-                
-                print(f"Processing batch {batch_start//batch_size + 1}/{(len(scenarios)-1)//batch_size + 1}")
-                
-                args_list = [(scenario, str(self.output_dir)) for scenario in batch_scenarios]
-                
-                with mp.Pool(self.n_workers) as pool:
-                    results = list(tqdm(
-                        pool.imap(worker_function, args_list),
-                        total=len(args_list),
-                        desc="Generating data"
-                    ))
-                
-                # Save results
-                for i, (rdm_data, mask_data, metadata, error) in enumerate(results):
-                    if error:
-                        print(f"Error in scenario {batch_start + i}: {error}")
-                        continue
-                    
-                    scenario_id = metadata['scenario_id']
-                    
-                    # Save range-doppler maps
-                    if compress:
-                        rdm_group.create_dataset(
-                            f"scenario_{scenario_id}",
-                            data=rdm_data,
-                            compression="gzip",
-                            compression_opts=6
-                        )
-                        mask_group.create_dataset(
-                            f"scenario_{scenario_id}",
-                            data=mask_data,
-                            compression="gzip",
-                            compression_opts=9  # Higher compression for binary masks
-                        )
-                    else:
-                        rdm_group.create_dataset(f"scenario_{scenario_id}", data=rdm_data)
-                        mask_group.create_dataset(f"scenario_{scenario_id}", data=mask_data)
-                    
-                    # Save metadata
-                    meta_grp = meta_group.create_group(f"scenario_{scenario_id}")
-                    for key, value in metadata.items():
-                        meta_grp.attrs[key] = json.dumps(value)
-        
-        print(f"Segmentation dataset saved to {h5_path}")
-        return h5_path
-    
-    def visualize_samples(self, h5_path: Path, n_samples: int = 5):
-        """Create visualization of samples with ground truth overlays."""
-        vis_dir = self.output_dir / "visualizations"
-        vis_dir.mkdir(exist_ok=True)
-        
-        with h5py.File(h5_path, 'r') as f:
-            scenario_keys = list(f['range_doppler_maps'].keys())[:n_samples]
-            
-            for key in scenario_keys:
-                rdm_data = f['range_doppler_maps'][key][:]
-                mask_data = f['ground_truth_masks'][key][:]
-                
-                # Create visualization for all 5 frames
-                fig, axes = plt.subplots(3, 5, figsize=(20, 12))
-                
-                for frame_idx in range(5):
-                    rdm_frame = rdm_data[frame_idx]
-                    mask_frame = mask_data[frame_idx]
-                    
-                    # Range-Doppler map
-                    rdm_db = 10 * np.log10(np.maximum(np.abs(rdm_frame)**2, 1e-15))
-                    im1 = axes[0, frame_idx].imshow(rdm_db, aspect='auto', cmap='viridis')
-                    axes[0, frame_idx].set_title(f'RDM Frame {frame_idx}')
-                    axes[0, frame_idx].set_xlabel('Doppler Bin')
-                    axes[0, frame_idx].set_ylabel('Range Bin')
-                    
-                    # Ground truth mask
-                    im2 = axes[1, frame_idx].imshow(mask_frame, aspect='auto', cmap='gray')
-                    axes[1, frame_idx].set_title(f'Mask Frame {frame_idx}')
-                    axes[1, frame_idx].set_xlabel('Doppler Bin')
-                    axes[1, frame_idx].set_ylabel('Range Bin')
-                    
-                    # Overlay
-                    overlay = rdm_db.copy()
-                    overlay[mask_frame == 1] = np.max(rdm_db)  # Highlight target areas
-                    im3 = axes[2, frame_idx].imshow(overlay, aspect='auto', cmap='viridis')
-                    axes[2, frame_idx].contour(mask_frame, levels=[0.5], colors='red', linewidths=2)
-                    axes[2, frame_idx].set_title(f'Overlay Frame {frame_idx}')
-                    axes[2, frame_idx].set_xlabel('Doppler Bin')
-                    axes[2, frame_idx].set_ylabel('Range Bin')
-                
-                plt.tight_layout()
-                plt.savefig(vis_dir / f"{key}_sequence.png", dpi=150, bbox_inches='tight')
-                plt.close()
-        
-        print(f"Visualizations saved to {vis_dir}")
 
     def save_pt_dataset(
         self,
         scenarios: List[Dict[str, Any]],
-        batch_size: int = 50
+        batch_size: int = 50,
+        apply_augmentation: bool = True
     ):
         """Save segmentation dataset in .pt (PyTorch) format."""
         print(f"Generating {len(scenarios)} scenarios using {self.n_workers} workers (saving as .pt files)...")
@@ -374,7 +331,7 @@ class SegmentationBatchProcessor:
 
             print(f"Processing batch {batch_start//batch_size + 1}/{(len(scenarios)-1)//batch_size + 1}")
 
-            args_list = [(scenario, str(self.output_dir)) for scenario in batch_scenarios]
+            args_list = [(scenario, str(self.output_dir), apply_augmentation) for scenario in batch_scenarios]
 
             with mp.Pool(self.n_workers) as pool:
                 results = list(tqdm(
@@ -383,17 +340,18 @@ class SegmentationBatchProcessor:
                     desc="Generating data"
                 ))
 
-            for i, (rdm_data, mask_data, metadata, error) in enumerate(results):
+            for i, (rdm_data, mask_data, targets_only_data, metadata, error) in enumerate(results):
                 if error:
                     print(f"Error in scenario {batch_start + i}: {error}")
                     continue
 
                 scenario_id = metadata['scenario_id']
 
-                # Save as PyTorch file
+                # Save as PyTorch file with targets-only data
                 torch.save({
-                    'rdm': torch.tensor(rdm_data),
-                    'mask': torch.tensor(mask_data),
+                    'rdm': torch.tensor(rdm_data, dtype=torch.float32),
+                    'mask': torch.tensor(mask_data, dtype=torch.uint8),
+                    'targets_only': torch.tensor(targets_only_data, dtype=torch.float32),
                     'metadata': metadata
                 }, pt_dir / f"scenario_{scenario_id:05d}.pt")
 
@@ -403,13 +361,13 @@ class SegmentationBatchProcessor:
 
 def main():
     parser = argparse.ArgumentParser(description="Generate simplified sea clutter segmentation dataset")
-    parser.add_argument("--n_scenarios", type=int, default=1000,
+    parser.add_argument("--n_scenarios", type=int, default=20000,  # Updated default
                         help="Number of scenarios to generate")
     parser.add_argument("--output_dir", type=str, default="segmentation_dataset",
                         help="Output directory")
     parser.add_argument("--min_targets", type=int, default=0,
                         help="Minimum number of targets per scenario")
-    parser.add_argument("--max_targets", type=int, default=4,
+    parser.add_argument("--max_targets", type=int, default=5,  # Updated default
                         help="Maximum number of targets per scenario")
     parser.add_argument("--n_workers", type=int, default=10,
                         help="Number of worker processes")
@@ -417,8 +375,10 @@ def main():
                         help="Batch size for processing")
     parser.add_argument("--visualize", action="store_true",
                         help="Generate sample visualizations")
-    parser.add_argument("--save_pt", action="store_true",
+    parser.add_argument("--save_pt", action="store_true", default=True,  # Default to True
                     help="Save dataset in .pt (PyTorch) format instead of HDF5")
+    parser.add_argument("--no_augmentation", action="store_true",
+                    help="Disable data augmentation")
 
     
     args = parser.parse_args()
@@ -440,7 +400,11 @@ def main():
     
     start_time = time.time()
     if args.save_pt:
-        dataset_path = processor.save_pt_dataset(scenarios, batch_size=args.batch_size)
+        dataset_path = processor.save_pt_dataset(
+            scenarios, 
+            batch_size=args.batch_size,
+            apply_augmentation=not args.no_augmentation
+        )
     else:
         dataset_path = processor.save_hdf5_dataset(scenarios, batch_size=args.batch_size)
 
