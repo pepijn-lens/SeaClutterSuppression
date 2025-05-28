@@ -60,32 +60,44 @@ def _inject_bragg(rd: np.ndarray, prf: float, offset_hz: float, width_hz: float,
     rd *= 1.0 + (10.0 ** (boost_db / 10.0) - 1.0) * weight[np.newaxis, :]
 
 
+def _generate_thermal_noise(n_ranges: int, n_pulses: int, noise_power_db: float) -> np.ndarray:
+    """Generate complex Gaussian thermal noise."""
+    noise = (
+        np.random.randn(n_ranges, n_pulses) + 1j * np.random.randn(n_ranges, n_pulses)
+    ) / np.sqrt(2.0)
+    # Scale to desired power level
+    noise *= 10.0 ** (noise_power_db / 20.0)
+    return noise
+
 def simulate_sea_clutter(
     rp: RadarParams,
     cp: ClutterParams,
     *,
     texture: np.ndarray | None = None,
     init_speckle: np.ndarray | None = None,
+    thermal_noise_db: float = 1,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     if texture is None:
         texture = _generate_texture(rp.n_ranges, rp.n_pulses, cp.shape_param)
     speckle = _generate_speckle(rp.n_ranges, rp.n_pulses, cp.ar_coeff, init_state=init_speckle)
     clutter_td = np.sqrt(texture) * speckle * 10.0 ** (cp.mean_power_db / 20.0)
+    
+    # Add thermal noise if specified
+    if thermal_noise_db is not None:
+        thermal_noise = _generate_thermal_noise(rp.n_ranges, rp.n_pulses, thermal_noise_db)
+        clutter_td += thermal_noise
+    
     return clutter_td, texture, speckle[:, -1]
 
 
 def add_target_blob(signal_td: np.ndarray, tgt: Target, rp: RadarParams):
-    """Add a 3x1 range blob around tgt.rng_idx with central peak and weaker neighbors."""
+    """Add a target at tgt.rng_idx with given power and Doppler."""
     n = np.arange(rp.n_pulses)
     phase = np.exp(1j * 2.0 * np.pi * tgt.doppler_hz * n / rp.prf)
-    amp_center = np.sqrt(tgt.power)
-    # Surrounding cell weight (e.g. 70% of center)
-    neighbor_weight = 0.7
-    for offset in (-1, 0, 1):
-        idx = tgt.rng_idx + offset
-        if 0 <= idx < rp.n_ranges:
-            weight = amp_center * (1.0 if offset == 0 else neighbor_weight)
-            signal_td[idx] += weight * phase
+    amp_center = np.sqrt(10 ** (tgt.power/20))
+    idx = tgt.rng_idx
+    if 0 <= idx < rp.n_ranges: 
+        signal_td[idx] += amp_center * phase
 
 
 def compute_range_doppler(signal_td: np.ndarray, rp: RadarParams, cp: ClutterParams) -> np.ndarray:

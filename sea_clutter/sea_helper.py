@@ -66,7 +66,7 @@ def animate_sequence(
         fig, ax = plt.subplots(figsize=(6, 5))
         im1 = ax.imshow(imgs_db[0], aspect="auto", cmap="viridis",
                        extent=[velocity[0], velocity[-1], rng[-1], rng[0]],
-                       vmin=vmin, vmax=vmax, 
+                    #    vmin=vmin, vmax=vmax, 
                        interpolation="nearest")
         ax.set_xlabel("Radial Velocity (m/s)")
         ax.set_ylabel("Range (m)")

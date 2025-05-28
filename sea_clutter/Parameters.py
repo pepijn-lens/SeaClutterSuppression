@@ -11,8 +11,8 @@ import numpy as np
 class RadarParams:
     prf: float = 5000.0            # Pulse-repetition frequency [Hz]
     n_pulses: int = 128            # Pulses per coherent processing interval (CPI)
-    n_ranges: int = 512           # Range bins
-    range_resolution: float = 1  # [m]
+    n_ranges: int = 128            # Range bins
+    range_resolution: float = 1    # [m]
     carrier_wavelength: float = 0.03  # [m] – unused but kept for completeness
 
 @dataclass
@@ -44,6 +44,7 @@ class TargetType(Enum):
     SMALL_CRAFT = "small"          # Very affected by waves, erratic movement
     SAILBOAT = "sailboat"          # Wind-dependent, gentle movements
     SPEEDBOAT = "speedboat"        # Fast, agile, sudden speed changes
+    FIXED = "fixed"                # No specific target, used for clutter only
 
 @dataclass
 class RealisticTarget:
@@ -94,9 +95,9 @@ def get_clutter_params_for_sea_state(state: int) -> ClutterParams:
             'wave_speed_mps': 2.0        # Moderate wave movement
         },
         5: {  # Moderate seas
-            'mean_power_db': -22.0,      # Moderate clutter power
-            'shape_param': 0.3,          # Significant non-Gaussianity
-            'ar_coeff': 0.988,           # Moderate correlation
+            'mean_power_db': 10.0,      # Moderate clutter power
+            'shape_param': 0.1,          # Significant non-Gaussianity
+            'ar_coeff': 0.95,           # Moderate correlation
             'bragg_offset_hz': 25.0,     # Strong Bragg lines
             'bragg_width_hz': 2.0,       # Wider Bragg peaks
             'bragg_power_rel': 5.0,      # Strong Bragg enhancement
@@ -221,11 +222,11 @@ def create_realistic_target(target_type: TargetType, initial_range_idx: int, rp:
     
     else:
         # Default case
-        base_velocity = np.random.uniform(-10, 10)
+        base_velocity = np.random.uniform(-20, 20)
         return RealisticTarget(
             rng_idx=initial_range_idx,
             doppler_hz=2.0 * base_velocity / rp.carrier_wavelength,
-            power=0.01,
+            power=30, #np.random.uniform(0.01,0.08),
             target_type=target_type,
             base_velocity_mps=base_velocity,
             velocity_noise_std=standard_velocity_noise_std,    # Standardized

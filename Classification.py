@@ -1,4 +1,3 @@
-from swin_class import swin_t, SwinStageOneModel, SwinTwoStageModel  # or replace with direct class if in same file
 from new_swin import radar_swin_t
 import os
 import torch
@@ -289,27 +288,6 @@ if __name__ == "__main__":
         head_dim=32,
         patch_size=8
     ).to(device)
-
-    # model = SwinTwoStageModel(
-    #     in_channels=1,
-    #     layers=4,
-    #     downscaling_factor=8,
-    #     num_heads=2,
-    #     hidden_dim=32,
-    #     num_classes=6,
-    #     head_dim=16
-    # )
-
-    # model = swin_t(
-    #     channels=1,           
-    #     num_classes=6,
-    #     window_size=(2,8),
-    #     relative_pos_embedding=True,
-    #     downscaling_factors=(4,2,2,2),
-    #     hidden_dim=32,
-    #     heads=(2,4,6,8),
-    #     head_dim=16,
-    # ).to(device) # Initialize model
 
     # print(model)
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
