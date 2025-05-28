@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 
 # Import your existing classes
-from sea_clutter.sea_clutter import (
+from sea_clutter.simulation import (
     RadarParams, ClutterParams, Target, SequenceParams,
     simulate_sea_clutter, compute_range_doppler, add_target_blob,
     get_clutter_params_for_sea_state
