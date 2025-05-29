@@ -34,8 +34,8 @@ class Target:
 
 @dataclass
 class SequenceParams:
-    n_frames: int = 25            # Frames to simulate
-    frame_rate_hz: float = 2.0      # Frames per second
+    n_frames: int = 5            # Frames to simulate
+    frame_rate_hz: float = 2      # Frames per second
 
 class TargetType(Enum):
     FISHING_VESSEL = "fishing"      # Slow, meandering, affected by waves
@@ -226,7 +226,7 @@ def create_realistic_target(target_type: TargetType, initial_range_idx: int, rp:
         return RealisticTarget(
             rng_idx=initial_range_idx,
             doppler_hz=2.0 * base_velocity / rp.carrier_wavelength,
-            power=60, #np.random.uniform(0.01,0.08),
+            power=30, #np.random.uniform(0.01,0.08),
             target_type=target_type,
             base_velocity_mps=base_velocity,
             velocity_noise_std=standard_velocity_noise_std,    # Standardized

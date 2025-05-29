@@ -48,11 +48,32 @@ def generate_single_frame_with_targets(
     return rdm
 
 
+def generate_sequence_with_targets(
+    rp: RadarParams,
+    cp: ClutterParams,
+    n_targets: int,
+    n_frames: int = 3
+) -> np.ndarray:
+    """Generate a sequence of range-Doppler maps with specified number of targets."""
+    
+    frames = []
+    for frame_idx in range(n_frames):
+        rdm = generate_single_frame_with_targets(rp, cp, n_targets)
+        
+        # Convert to dB scale and normalize
+        rdm = 20 * np.log10(np.abs(rdm) + 1e-10)  # Avoid log(0)
+        rdm = (rdm - np.mean(rdm)) / np.std(rdm) + 1e-10
+        
+        frames.append(rdm)
+    
+    return np.array(frames)  # Shape: (n_frames, n_ranges, n_doppler_bins)
+
+
 def generate_classification_dataset(
     samples_per_class: int = 2000,
     max_targets: int = 5,
     sea_state: int = 5,
-    save_path: str = "sea_clutter_classification_dataset.pt"
+    save_path: str = "data/sea_clutter-3_frames.pt"
 ) -> None:
     """
     Generate dataset for target count classification.
@@ -68,13 +89,14 @@ def generate_classification_dataset(
     rp = RadarParams()
     cp = get_clutter_params_for_sea_state(sea_state)
     
-    # Set single frame
+    # Set sequence parameters
     sp = SequenceParams()
-    sp.n_frames = 1
+    sp.n_frames = 3  # Now generating 3 frames per sample
     
     print(f"Generating dataset with {samples_per_class} samples per class")
     print(f"Classes: 0 to {max_targets} targets")
     print(f"Sea state: {sea_state}")
+    print(f"Frames per sample: {sp.n_frames}")
     print(f"Range-Doppler map size: {rp.n_ranges} x {rp.n_pulses}")
     
     # Storage for data and labels
@@ -89,26 +111,18 @@ def generate_classification_dataset(
         class_labels = []
         
         for i in tqdm(range(samples_per_class), desc=f"Class {n_targets}"):
-            # Generate single RDM
-            rdm = generate_single_frame_with_targets(rp, cp, n_targets)
+            # Generate sequence of RDMs
+            sequence = generate_sequence_with_targets(rp, cp, n_targets, sp.n_frames)
 
-            # to dB scale and normalize with mean and std
-            rdm = 20 * np.log10(np.abs(rdm) + 1e-10)  # Avoid log(0)
-            rdm = (rdm - np.mean(rdm)) / np.std(rdm) + 1e-10
-
-            # plt.figure()
-            # plt.imshow(rdm, aspect='auto', origin='lower', cmap='viridis')
-            # plt.show()
-
-            # Store image and label
-            class_images.append(rdm)
+            # Store image sequence and label
+            class_images.append(sequence)
             class_labels.append(n_targets)
         
         all_images.extend(class_images)
         all_labels.extend(class_labels)
     
     # Convert to numpy arrays
-    images = np.array(all_images)  # Shape: (total_samples, n_ranges, n_doppler_bins)
+    images = np.array(all_images)  # Shape: (total_samples, n_frames, n_ranges, n_doppler_bins)
     labels = np.array(all_labels)  # Shape: (total_samples,)
     
     print(f"\nDataset generated!")
@@ -128,6 +142,7 @@ def generate_classification_dataset(
             'samples_per_class': samples_per_class,
             'max_targets': max_targets,
             'sea_state': sea_state,
+            'n_frames': sp.n_frames,
             'n_ranges': rp.n_ranges,
             'n_doppler_bins': rp.n_pulses,
             'range_resolution': rp.range_resolution,

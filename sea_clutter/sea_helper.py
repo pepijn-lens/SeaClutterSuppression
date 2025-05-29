@@ -26,7 +26,7 @@ def animate_sequence(
     velocity = fd * rp.carrier_wavelength / 2.0
     rng = np.arange(rp.n_ranges) * rp.range_resolution
     imgs_db = [db(np.abs(rd) ** 2) for rd in rdm_list]
-    vmax = max(map(np.max, imgs_db)); vmin = vmax - 50.0
+    vmax = 60; vmin = 10
     
     # Create subplot layout based on whether masks are provided
     if target_mask_list is not None:

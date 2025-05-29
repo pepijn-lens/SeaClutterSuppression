@@ -97,7 +97,7 @@ def simulate_example_with_multiple_targets(save_gif: bool = False, cp = ClutterP
     #     create_realistic_target(TargetType.SPEEDBOAT, random.randint(0, max_range), rp),
     # ]
     
-    targets = [create_realistic_target(TargetType.FIXED, random.randint(0, max_range), rp) for _ in range(10)]
+    targets = [create_realistic_target(TargetType.FIXED, random.randint(0, max_range), rp) for _ in range(5)]
 
     # Print target information
     print("Simulating targets:")
