@@ -55,7 +55,7 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="Verify classification dataset")
-    parser.add_argument("--dataset", type=str, default="/Users/pepijnlens/Documents/transformers/sea_clutter_classification_dataset.pt",
+    parser.add_argument("--dataset", type=str, default="/Users/pepijnlens/Documents/transformers/sea_clutter_classification_SCR25.pt",
                         help="Path to dataset file")
     
     args = parser.parse_args()

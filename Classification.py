@@ -14,13 +14,24 @@ class RadarDataset(Dataset):
     def __init__(self, data_path):
         self.data_path = data_path
         self.dataset = torch.load(data_path, weights_only=False)
-        self.data_tensor, self.label_tensor, _, _ = self.dataset.tensors
+        
+        # Access the dictionary structure we created
+        self.data_tensor = self.dataset['images']
+        self.label_tensor = self.dataset['labels']
+        self.metadata = self.dataset['metadata']
 
     def __len__(self):
         return len(self.data_tensor)
 
     def __getitem__(self, idx):
-        return self.data_tensor[idx], self.label_tensor[idx] #, self.ranges_tensor[idx], self.velocities_tensor[idx]
+        # Add channel dimension for CNN compatibility (batch_size, 1, height, width)
+        image = self.data_tensor[idx].unsqueeze(0)  # Add channel dimension
+        label = self.label_tensor[idx]
+        return image, label
+    
+    def get_metadata(self):
+        """Return dataset metadata for reference."""
+        return self.metadata
     
     
 def load_dataloaders(root_dir="swin_bursts", batch_size=16, num_workers=0,random_seed=42):
@@ -106,7 +117,7 @@ def train(model, train_loader, val_loader, criterion, optimizer, device, num_epo
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             best_epoch = epoch + 1
-            torch.save(model.state_dict(), save_path)
+            torch.save(model.state_dict(), f'models/{save_path}')
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
@@ -200,10 +211,10 @@ logging.basicConfig(
 logger = logging.getLogger("optuna_search")
 
 def objective(trial, dataset_pth="data/30dB.pt"):
-    layers = trial.suggest_categorical("layers", [4, 6])
-    window_size = trial.suggest_categorical("window_size", [(2, 8), (2, 4)])
+    layers = trial.suggest_categorical("layers", [2, 4, 6, 8])
+    window_size = trial.suggest_categorical("window_size", [2, 4, 8])
     patch_size = trial.suggest_categorical("patch_size", [4, 8])
-    weight_decay = trial.suggest_float("weight_decay", 1e-4, 1e-1, log=True)
+    weight_decay = trial.suggest_float("weight_decay", 1e-3, 1e-1, log=True)
     hidden_dim = 2 * (patch_size ** 2)
     if hidden_dim == 32:
         heads = 2
@@ -236,7 +247,7 @@ def objective(trial, dataset_pth="data/30dB.pt"):
     )
     train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=100, save_path=f"optuna_trial_{trial.number}.pt", patience=15, scheduler=scheduler)
 
-    model.load_state_dict(torch.load(f"optuna_trial_{trial.number}.pt"))
+    model.load_state_dict(torch.load(f"models/optuna_trial_{trial.number}.pt"))
     val_acc = evaluate(model, val_loader, device)
     logger.info(f"Trial {trial.number} finished with val_acc={val_acc:.4f}")
     return val_acc
@@ -267,35 +278,35 @@ def get_cosine_schedule_with_warmup(optimizer, warmup_steps, total_steps, min_lr
 if __name__ == "__main__":
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
+    # model_name = "8patch-medium.pt"
+    model_name = "sea_monster-25dB.pt"
+    dataset_pt = "data/sea_clutter_classification_SCR25.pt"
+    
     # study = optuna.create_study(direction="maximize")
-    # study.optimize(lambda trial: objective(trial, 'data/30dB.pt'), n_trials=10)
+    # study.optimize(lambda trial: objective(trial, dataset_pt), n_trials=20)
 
     # logger.info(f"Best trial: {study.best_trial.number}")
     # logger.info(f"Best value: {study.best_trial.value}")
     # logger.info(f"Best params: {study.best_trial.params}")
-
-    # model_name = "8patch-medium.pt"
-    model_name = "optuna/optuna_trial_6-20dBRCStraining.pt"
-    dataset_pt = "data/30dB.pt"
     
     model = radar_swin_t(
         in_channels=1,
         num_classes=6,
-        hidden_dim=128,
-        window_size=(2, 8),
-        layers=6,
-        heads=4,
-        head_dim=32,
-        patch_size=8
+        hidden_dim=32,
+        window_size=8,
+        layers=8,
+        heads=2,
+        head_dim=16,
+        patch_size=4
     ).to(device)
 
     # print(model)
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f'{trainable_params:,} trainable parameters')
 
-    model.load_state_dict(torch.load(model_name))  # Load pre-trained model if available
+    model.load_state_dict(torch.load(f'models/{model_name}'))  # Load pre-trained model if available
 
-    # train_loader, val_loader, test_loader = load_dataloaders(batch_size=32, root_dir=dataset_pt, random_seed=6)
+    train_loader, val_loader, test_loader = load_dataloaders(batch_size=32, root_dir=dataset_pt, random_seed=8)
 
     # criterion = torch.nn.CrossEntropyLoss()
     # optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4, weight_decay=0.002)
@@ -309,8 +320,8 @@ if __name__ == "__main__":
 
     # train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=100, save_path=model_name, scheduler=scheduler)
 
-    dataset = RadarDataset(data_path=dataset_pt)
-    test_loader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=0)
+    # dataset = RadarDataset(data_path=dataset_pt)
+    # test_loader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=0)
 
     accuracy = evaluate(model, test_loader, device)
 

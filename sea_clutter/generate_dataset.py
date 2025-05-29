@@ -29,7 +29,7 @@ def generate_single_frame_with_targets(
     if n_targets > 0:
         max_range = rp.n_ranges * rp.range_resolution
         targets = [
-            create_realistic_target(TargetType.RANDOM, random.randint(0, max_range-1), rp) 
+            create_realistic_target(TargetType.FIXED, random.randint(0, max_range-1), rp) 
             for _ in range(n_targets)
         ]
         
@@ -82,7 +82,7 @@ def generate_classification_dataset(
     all_labels = []
     
     # Generate data for each class
-    for n_targets in range(0, max_targets + 1):
+    for n_targets in range(max_targets + 1):
         print(f"\nGenerating {samples_per_class} samples for {n_targets} targets...")
         
         class_images = []
@@ -92,9 +92,9 @@ def generate_classification_dataset(
             # Generate single RDM
             rdm = generate_single_frame_with_targets(rp, cp, n_targets)
 
-            # to dB scale and normalize
+            # to dB scale and normalize with mean and std
             rdm = 20 * np.log10(np.abs(rdm) + 1e-10)  # Avoid log(0)
-            rdm = (rdm - np.min(rdm)) / (np.max(rdm) - np.min(rdm))  # Normalize to [0, 1]
+            rdm = (rdm - np.mean(rdm)) / np.std(rdm) + 1e-10
 
             # plt.figure()
             # plt.imshow(rdm, aspect='auto', origin='lower', cmap='viridis')
@@ -151,7 +151,7 @@ if __name__ == "__main__":
                         help="Maximum number of targets (default: 5)")
     parser.add_argument("--sea-state", type=int, choices=[1,3,5,7,9], default=5,
                         help="WMO sea state (default: 5)")
-    parser.add_argument("--output", type=str, default="sea_clutter_classification_dataset.pt",
+    parser.add_argument("--output", type=str, default="sea_clutter_classification_SCR25.pt",
                         help="Output file path (default: sea_clutter_classification_dataset.pt)")
     
     args = parser.parse_args()

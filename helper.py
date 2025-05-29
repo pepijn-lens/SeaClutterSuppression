@@ -158,80 +158,97 @@ def plot_attention(attn_map, head=0, window_idx=0):
     plt.ylabel('Query Tokens')
     plt.show()
 
-# ...existing code...
-
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model_name = "optuna_trial_6-20dBRCStraining.pt"
-    dataset_name = "20dB_RCS"
+    model_name = "/Users/pepijnlens/Documents/transformers/models/sea_monster-25dB.pt"
+    dataset_name = "sea_clutter_classification_SCR25.pt"
 
     model = radar_swin_t(
         in_channels=1,
         num_classes=6,
-        hidden_dim=128,
-        window_size=(2, 8),
-        layers=6,
-        heads=4,
-        head_dim=32,
-        patch_size=8
+        hidden_dim=32,
+        window_size=8,
+        layers=8,
+        heads=2,
+        head_dim=16,
+        patch_size=4
     ).to(device)
-    model.load_state_dict(torch.load(f"optuna/{model_name}", map_location=device))
+    model.load_state_dict(torch.load(model_name, map_location=device))
     model.eval()
-    # print(model)
 
     # Load dataset and sample
-    dataset = RadarDataset(data_path=f"data/{dataset_name}.pt")
-    img, label = dataset[23000]
-    # plt.figure()
-    # plt.imshow(img[0].squeeze(0).numpy())
-    # plt.savefig("attention_maps/sample_image.png")
-    # plt.show()
+    dataset = RadarDataset(data_path=f"data/{dataset_name}")
+    img, label = dataset[10000]
+    plt.figure()
+    plt.imshow(img[0].squeeze(0).numpy())
+    plt.savefig("attention_maps_sea_clutter/sample_image.png")
+    plt.show()
     img = img.unsqueeze(0).to(device)  # (1, 1, 64, 512)
 
-    # Hook to capture attention maps
-    attention_maps = []
+    # Get model prediction for this image
+    with torch.no_grad():
+        logits = model(img)
+        predicted_class = torch.argmax(logits, dim=1).item()
+        probabilities = torch.softmax(logits, dim=1)
+        confidence = probabilities[0, predicted_class].item()
+    
+    print(f"Sample image - True label: {label}, Predicted: {predicted_class}, Confidence: {confidence:.3f}")
+    
+    # Optional: Print all class probabilities
+    print("Class probabilities:")
+    for i, prob in enumerate(probabilities[0]):
+        print(f"  Class {i}: {prob.item():.3f}")
 
-    def hook_fn(module, input, output):
-        # output: (out, attn)
-        if isinstance(output, tuple):
-            attention_maps.append(output[1].detach().cpu())
+    # Loop through all 8 layers to capture attention maps
+    for layer_idx in range(4):
+        print(f"Processing layer {layer_idx}...")
+        
+        # Hook to capture attention maps for this layer
+        attention_maps = []
 
-    window_attention = model.stage1.layers[2][0].attention_block.fn.fn
-    handle = window_attention.register_forward_hook(hook_fn)
+        def hook_fn(module, input, output):
+            # output: (out, attn)
+            if isinstance(output, tuple):
+                attention_maps.append(output[1].detach().cpu())
 
-    orig_forward = window_attention.forward
-    def forward_with_attention(x, **kwargs):
-        return orig_forward(x, return_attention=True, **kwargs)
-    window_attention.forward = forward_with_attention
+        # Hook into the current layer's attention module
+        window_attention = model.stage1.layers[layer_idx][0].attention_block.fn.fn
+        handle = window_attention.register_forward_hook(hook_fn)
 
-    try:
-        with torch.no_grad():
-            _ = model(img)
-    finally:
-        window_attention.forward = orig_forward
-        handle.remove()
+        orig_forward = window_attention.forward
+        def forward_with_attention(x, **kwargs):
+            return orig_forward(x, return_attention=True, **kwargs)
+        window_attention.forward = forward_with_attention
 
-    # Save all attention maps (for all heads and windows)
-    if attention_maps:
-        attn = attention_maps[0]  # shape: (B, heads, windows, N, N)
-        dir ="attention_maps/layer3/"
-        os.makedirs(dir, exist_ok=True)
-        num_heads = attn.shape[1]
-        num_windows = attn.shape[2]
-        for head in range(num_heads):
-            for window_idx in range(num_windows):
-                attn_img = attn[0, head, window_idx].numpy()
-                plt.figure(figsize=(6, 5))
-                plt.imshow(attn_img, cmap="viridis")
-                plt.colorbar()
-                plt.title(f"Head {head} - Window {window_idx}")
-                plt.xlabel('Key Tokens')
-                plt.ylabel('Query Tokens')
-                plt.tight_layout()
-                plt.savefig(f"{dir}attn_head{head}_window{window_idx}.png")
-                plt.close()
-        print(f"Saved {num_heads * num_windows} attention maps to 'attention_maps/'")
-    else:
-        print("No attention maps captured.")
-# ...existing code...
+        try:
+            with torch.no_grad():
+                _ = model(img)
+        finally:
+            window_attention.forward = orig_forward
+            handle.remove()
+
+        # Save all attention maps for this layer
+        if attention_maps:
+            attn = attention_maps[0]  # shape: (B, heads, windows, N, N)
+            dir = f"attention_maps_sea_clutter/layer{layer_idx}/"
+            os.makedirs(dir, exist_ok=True)
+            num_heads = attn.shape[1]
+            num_windows = attn.shape[2]
+            for head in range(num_heads):
+                for window_idx in range(num_windows):
+                    attn_img = attn[0, head, window_idx].numpy()
+                    plt.figure(figsize=(6, 5))
+                    plt.imshow(attn_img, cmap="viridis", vmax=1, vmin=0)
+                    plt.colorbar()
+                    plt.title(f"Layer {layer_idx} - Head {head} - Window {window_idx}")
+                    plt.xlabel('Key Tokens')
+                    plt.ylabel('Query Tokens')
+                    plt.tight_layout()
+                    plt.savefig(f"{dir}attn_head{head}_window{window_idx}.png")
+                    plt.close()
+            print(f"Saved {num_heads * num_windows} attention maps for layer {layer_idx}")
+        else:
+            print(f"No attention maps captured for layer {layer_idx}")
+
+    print("Finished saving attention maps for all layers!")

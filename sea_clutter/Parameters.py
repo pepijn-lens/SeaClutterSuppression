@@ -226,7 +226,7 @@ def create_realistic_target(target_type: TargetType, initial_range_idx: int, rp:
         return RealisticTarget(
             rng_idx=initial_range_idx,
             doppler_hz=2.0 * base_velocity / rp.carrier_wavelength,
-            power=30, #np.random.uniform(0.01,0.08),
+            power=60, #np.random.uniform(0.01,0.08),
             target_type=target_type,
             base_velocity_mps=base_velocity,
             velocity_noise_std=standard_velocity_noise_std,    # Standardized

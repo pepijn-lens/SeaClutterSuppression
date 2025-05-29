@@ -11,6 +11,8 @@ MaritimeRadarPPI/
 sea_clutter/segmentation_dataset/
 sea_clutter/sea_state*
 segmentation_dataset/
+__pycache__/
+attention_maps_sea_clutter/
 
 # Ignore Python cache files
 __pycache__/
