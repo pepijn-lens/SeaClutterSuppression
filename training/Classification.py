@@ -15,8 +15,16 @@ class RadarDataset(Dataset):
         self.data_path = data_path
         self.dataset = torch.load(data_path, weights_only=False)
         
-        # Access the dictionary structure we created
-        self.data_tensor = self.dataset['images']
+        # Access the dictionary structure for sequences
+        if 'sequences' in self.dataset:
+            # New sequence dataset
+            self.data_tensor = self.dataset['sequences']
+            self.is_sequence = True
+        else:
+            # Old single image dataset
+            self.data_tensor = self.dataset['images']  
+            self.is_sequence = False
+            
         self.label_tensor = self.dataset['labels']
         self.metadata = self.dataset['metadata']
 
@@ -24,10 +32,18 @@ class RadarDataset(Dataset):
         return len(self.data_tensor)
 
     def __getitem__(self, idx):
-        # Add channel dimension for CNN compatibility (batch_size, 1, height, width)
-        image = self.data_tensor[idx].unsqueeze(0)  # Add channel dimension
-        label = self.label_tensor[idx]
-        return image, label
+        if self.is_sequence:
+            # For sequences: shape is (n_frames, height, width)
+            # Use time dimension as channel dimension: (n_frames, height, width)
+            sequence = self.data_tensor[idx]
+            sequence = sequence[:-1]  # Shape: (4, 128, 128)
+            label = self.label_tensor[idx]
+            return sequence, label
+        else:
+            # For single images: add channel dimension (1, height, width)
+            image = self.data_tensor[idx].unsqueeze(0)
+            label = self.label_tensor[idx]
+            return image, label
     
     def get_metadata(self):
         """Return dataset metadata for reference."""
@@ -190,13 +206,27 @@ def analyze_model(model, dataloader, device, class_names=None, max_misclassified
     plt.savefig(dir + "/confusion_matrix.png")
     plt.close()
 
-    # Visualize misclassified images
+    # Visualize misclassified images (for 4,128,128 input: show as 2x2 grid of frames)
     for i, (img, pred, label) in enumerate(misclassified):
-        plt.imshow(img.squeeze(0))  # squeeze channel dimension
-        title = f"Misclassified {i+1}: Pred={class_names[pred] if class_names else pred} | True={class_names[label] if class_names else label}"
-        plt.title(title)
-        plt.axis('off')
-        plt.savefig(dir + f"/misclassified_{i+1}.png", dpi=500)
+        if img.shape[0] == 3 and img.shape[1] == 128 and img.shape[2] == 128:
+            fig, axs = plt.subplots(2, 2, figsize=(6, 6))
+            for j in range(3):
+                ax = axs[j // 2, j % 2]
+                ax.imshow(img[j])
+                ax.set_title(f"Frame {j+1}")
+                ax.axis('off')
+            fig.suptitle(f"Misclassified {i+1}: Pred={class_names[pred] if class_names else pred} | True={class_names[label] if class_names else label}")
+            plt.tight_layout(rect=[0, 0, 1, 0.95])
+            plt.savefig(dir + f"/misclassified_{i+1}.png", dpi=500)
+            plt.close(fig)
+        else:
+            # fallback for other shapes (e.g. single image)
+            plt.imshow(img.squeeze())
+            title = f"Misclassified {i+1}: Pred={class_names[pred] if class_names else pred} | True={class_names[label] if class_names else label}"
+            plt.title(title)
+            plt.axis('off')
+            plt.savefig(dir + f"/misclassified_{i+1}.png", dpi=500)
+            plt.close()
 
 # Set up logging
 optuna.logging.set_verbosity(optuna.logging.INFO)
@@ -211,21 +241,21 @@ logging.basicConfig(
 logger = logging.getLogger("optuna_search")
 
 def objective(trial, dataset_pth="data/30dB.pt"):
-    layers = trial.suggest_categorical("layers", [2, 4, 6, 8])
-    window_size = trial.suggest_categorical("window_size", [2, 4, 8])
+    layers = trial.suggest_categorical("layers", [6, 8])
+    window_size = trial.suggest_categorical("window_size", [4, 8])
     patch_size = trial.suggest_categorical("patch_size", [4, 8])
     weight_decay = trial.suggest_float("weight_decay", 1e-3, 1e-1, log=True)
-    hidden_dim = 2 * (patch_size ** 2)
-    if hidden_dim == 32:
-        heads = 2
-    elif hidden_dim == 128:
-        heads = 4
+    hidden_dim = 2 * (patch_size ** 2) * 4 
+    if hidden_dim == 128:
+        heads = 8
+    elif hidden_dim == 512:
+        heads = 16
     head_dim = hidden_dim // heads
 
     logger.info(f"Trial {trial.number}: layers={layers}, window_size={window_size}, patch_size={patch_size}, heads={heads}, head_dim={head_dim}, weight decay={weight_decay}, dataset={dataset_pth}")
 
     model = radar_swin_t(
-        in_channels=1,
+        in_channels=4,
         num_classes=6,
         hidden_dim=hidden_dim,
         window_size=window_size,
@@ -245,7 +275,7 @@ def objective(trial, dataset_pth="data/30dB.pt"):
     scheduler = get_cosine_schedule_with_warmup(
         optimizer, warmup_steps=warmup_steps, total_steps=total_steps, min_lr_ratio=0.01
     )
-    train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=100, save_path=f"optuna_trial_{trial.number}.pt", patience=15, scheduler=scheduler)
+    train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=100, save_path=f"optuna_trial_{trial.number}.pt", patience=8, scheduler=scheduler)
 
     model.load_state_dict(torch.load(f"models/optuna_trial_{trial.number}.pt"))
     val_acc = evaluate(model, val_loader, device)
@@ -279,8 +309,8 @@ if __name__ == "__main__":
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
     # model_name = "8patch-medium.pt"
-    model_name = "sea_monster-25dB.pt"
-    dataset_pt = "data/sea_clutter_classification_SCR25.pt"
+    model_name = "multiframe_sea_monster-3channels.pt"
+    dataset_pt = "data/sea_clutter-4_frames-25SCR.pt"
     
     # study = optuna.create_study(direction="maximize")
     # study.optimize(lambda trial: objective(trial, dataset_pt), n_trials=20)
@@ -290,13 +320,13 @@ if __name__ == "__main__":
     # logger.info(f"Best params: {study.best_trial.params}")
     
     model = radar_swin_t(
-        in_channels=1,
+        in_channels=3,  # Changed from 1 to 4 for the 4 frames
         num_classes=6,
-        hidden_dim=32,
-        window_size=8,
-        layers=8,
-        heads=2,
-        head_dim=16,
+        hidden_dim=96,
+        window_size=(2, 8),
+        layers=4,
+        heads=3,
+        head_dim=32,
         patch_size=4
     ).to(device)
 
@@ -306,7 +336,7 @@ if __name__ == "__main__":
 
     model.load_state_dict(torch.load(f'models/{model_name}'))  # Load pre-trained model if available
 
-    train_loader, val_loader, test_loader = load_dataloaders(batch_size=32, root_dir=dataset_pt, random_seed=8)
+    train_loader, val_loader, test_loader = load_dataloaders(batch_size=64, root_dir=dataset_pt, random_seed=8)
 
     # criterion = torch.nn.CrossEntropyLoss()
     # optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4, weight_decay=0.002)

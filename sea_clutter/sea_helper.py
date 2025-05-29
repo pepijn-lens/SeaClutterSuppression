@@ -9,6 +9,7 @@ import matplotlib.animation as animation
 from Parameters import RadarParams, RealisticTarget
 from rd_map import db
 
+import torch
 
 # ────────────────────────────────────────────────────────────────────────────────
 # Animation helper
@@ -26,7 +27,7 @@ def animate_sequence(
     velocity = fd * rp.carrier_wavelength / 2.0
     rng = np.arange(rp.n_ranges) * rp.range_resolution
     imgs_db = [db(np.abs(rd) ** 2) for rd in rdm_list]
-    vmax = 60; vmin = 10
+    vmax = np.max(imgs_db); vmin = np.min(imgs_db)
     
     # Create subplot layout based on whether masks are provided
     if target_mask_list is not None:
@@ -66,7 +67,7 @@ def animate_sequence(
         fig, ax = plt.subplots(figsize=(6, 5))
         im1 = ax.imshow(imgs_db[0], aspect="auto", cmap="viridis",
                        extent=[velocity[0], velocity[-1], rng[-1], rng[0]],
-                    #    vmin=vmin, vmax=vmax, 
+                       vmin=vmin, vmax=vmax, 
                        interpolation="nearest")
         ax.set_xlabel("Radial Velocity (m/s)")
         ax.set_ylabel("Range (m)")
@@ -122,3 +123,73 @@ def update_realistic_target_velocity(tgt: RealisticTarget):
     # Update Doppler frequency based on new velocity
     tgt.doppler_hz = 2.0 * tgt.current_velocity_mps / 0.03  # Using default wavelength
 
+def plot_sea_clutter_sequence():
+    import sys
+    import os
+    # Add parent directory to Python path
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from Classification import RadarDataset
+    
+    # Load the dataset
+    data_path = "data/sea_clutter-4_frames.pt"  # Adjust path as needed
+    dataset = RadarDataset(data_path)
+    
+    # Get a sample
+    sample_idx = 7000  # You can change this to visualize different samples
+    sequence, label = dataset[sample_idx]
+    
+    # Convert from tensor to numpy if needed
+    if torch.is_tensor(sequence):
+        sequence_np = sequence.numpy()
+    else:
+        sequence_np = sequence
+    
+    print(f"Sample {sample_idx}: Label = {label}")
+    print(f"Sequence shape: {sequence_np.shape}")
+    
+    # # For single images, just display the image
+    # fig, ax = plt.subplots(figsize=(8, 6))
+    # im = ax.imshow(sequence_np.squeeze(0), aspect="auto", cmap="viridis")
+    # ax.set_title(f"Radar Image - Label: {label}")
+    # ax.set_xlabel("Doppler Bins")
+    # ax.set_ylabel("Range Bins")
+    # plt.colorbar(im, ax=ax, label="Magnitude (dB)")
+    # plt.tight_layout()
+    # plt.show()
+
+    if dataset.is_sequence:
+        # For sequences, create a list of frames for animation
+        rdm_list = [sequence_np[i] for i in range(sequence_np.shape[0])]
+        
+        # Get radar parameters from metadata if available
+        metadata = dataset.get_metadata()
+        if 'radar_params' in metadata:
+            rp = metadata['radar_params']
+        else:
+            # Create default radar parameters for visualization
+            from Parameters import RadarParams
+            rp = RadarParams()
+        
+        # Animate the sequence
+        print(f"Animating {len(rdm_list)} frames...")
+        ani = animate_sequence(
+            rdm_list=rdm_list,
+            target_mask_list=None,  # No masks available from dataset
+            rp=rp,
+            interval_ms=500,  # 500ms between frames
+            save_path=None  # Set to a path if you want to save
+        )
+    else:
+        # For single images, just display the image
+        fig, ax = plt.subplots(figsize=(8, 6))
+        im = ax.imshow(sequence_np[0], aspect="auto", cmap="viridis", vmin=0, vmax=60,)
+        ax.set_title(f"Radar Image - Label: {label}")
+        ax.set_xlabel("Doppler Bins")
+        ax.set_ylabel("Range Bins")
+        plt.colorbar(im, ax=ax, label="Magnitude (dB)")
+        plt.tight_layout()
+        plt.show()
+
+
+if __name__ == "__main__":
+    plot_sea_clutter_sequence()

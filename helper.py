@@ -161,16 +161,16 @@ def plot_attention(attn_map, head=0, window_idx=0):
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model_name = "/Users/pepijnlens/Documents/transformers/models/sea_monster-25dB.pt"
-    dataset_name = "sea_clutter_classification_SCR25.pt"
+    model_name = "/Users/pepijnlens/Documents/transformers/models/multiframe_sea_monster.pt"
+    dataset_name = "sea_clutter-4_frames-25SCR.pt"
 
     model = radar_swin_t(
-        in_channels=1,
+        in_channels=4,  # Changed from 1 to 4 for the 4 frames
         num_classes=6,
-        hidden_dim=32,
+        hidden_dim=128,
         window_size=8,
-        layers=8,
-        heads=2,
+        layers=6,
+        heads=8,
         head_dim=16,
         patch_size=4
     ).to(device)
@@ -180,11 +180,16 @@ if __name__ == "__main__":
     # Load dataset and sample
     dataset = RadarDataset(data_path=f"data/{dataset_name}")
     img, label = dataset[10000]
-    plt.figure()
-    plt.imshow(img[0].squeeze(0).numpy())
-    plt.savefig("attention_maps_sea_clutter/sample_image.png")
-    plt.show()
-    img = img.unsqueeze(0).to(device)  # (1, 1, 64, 512)
+    if img.shape[0] == 4 and img.shape[1] == 128 and img.shape[2] == 128:
+        fig, axs = plt.subplots(2, 2, figsize=(6, 6))
+        for j in range(4):
+            ax = axs[j // 2, j % 2]
+            ax.imshow(img[j])
+            ax.set_title(f"Frame {j+1}")
+            ax.axis('off')
+        plt.savefig("attention_maps_multiframe/sample_image.png")
+        plt.close(fig)
+        img = img.unsqueeze(0).to(device)  # (1, 1, 64, 512)
 
     # Get model prediction for this image
     with torch.no_grad():
@@ -201,7 +206,7 @@ if __name__ == "__main__":
         print(f"  Class {i}: {prob.item():.3f}")
 
     # Loop through all 8 layers to capture attention maps
-    for layer_idx in range(4):
+    for layer_idx in range(3):
         print(f"Processing layer {layer_idx}...")
         
         # Hook to capture attention maps for this layer
@@ -231,7 +236,7 @@ if __name__ == "__main__":
         # Save all attention maps for this layer
         if attention_maps:
             attn = attention_maps[0]  # shape: (B, heads, windows, N, N)
-            dir = f"attention_maps_sea_clutter/layer{layer_idx}/"
+            dir = f"attention_maps_multiframe/layer{layer_idx}/"
             os.makedirs(dir, exist_ok=True)
             num_heads = attn.shape[1]
             num_windows = attn.shape[2]

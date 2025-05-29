@@ -86,7 +86,8 @@ def simulate_example_with_multiple_targets(save_gif: bool = False, cp = ClutterP
     rp = RadarParams()
     cp = cp
     sp = SequenceParams()  # Longer sequence to see movement
-    max_range = rp.n_ranges * rp.range_resolution
+    min_range = int(round(20 * sp.n_frames/sp.frame_rate_hz/2))  # Minimum range for targets
+    max_range = int(round(rp.n_ranges * rp.range_resolution - (20 * sp.n_frames/sp.frame_rate_hz)/2))  # Maximum range for targets
     
     # # Create a variety of targets
     # targets = [
@@ -97,7 +98,7 @@ def simulate_example_with_multiple_targets(save_gif: bool = False, cp = ClutterP
     #     create_realistic_target(TargetType.SPEEDBOAT, random.randint(0, max_range), rp),
     # ]
     
-    targets = [create_realistic_target(TargetType.FIXED, random.randint(0, max_range), rp) for _ in range(5)]
+    targets = [create_realistic_target(TargetType.FIXED, random.randint(min_range, max_range), rp) for _ in range(5)]
 
     # Print target information
     print("Simulating targets:")
