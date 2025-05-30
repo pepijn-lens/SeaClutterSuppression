@@ -1,6 +1,6 @@
 from tqdm import tqdm
 from Parameters import RadarParams, ClutterParams, SequenceParams, TargetType, get_clutter_params_for_sea_state, create_realistic_target
-from rd_map import add_target_blob, compute_range_doppler, simulate_sea_clutter
+from physics import add_target_blob, compute_range_doppler, simulate_sea_clutter
 from Parameters import Target
 import torch
 import numpy as np
@@ -11,6 +11,7 @@ def generate_single_frame_with_targets_and_mask(
     rp: RadarParams,
     cp: ClutterParams,
     n_targets: int,
+    random_roll: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Generate a single range-Doppler map with specified number of targets and corresponding binary mask."""
     
@@ -19,12 +20,16 @@ def generate_single_frame_with_targets_and_mask(
     
     # Initialize binary mask (same size as RDM)
     target_mask = np.zeros((rp.n_ranges, rp.n_pulses), dtype=np.float32)
+
+    if random_roll:
+        # Apply random roll to simulate different clutter patterns
+        roll_amount = random.randint(-1200, 1200)
     
     # Generate random targets if needed
     if n_targets > 0:
         max_range = rp.n_ranges * rp.range_resolution
         targets = [
-            create_realistic_target(TargetType.FIXED, random.randint(0, max_range-1), rp) 
+            create_realistic_target(TargetType.FIXED, random.randint(1, max_range-1), rp) 
             for _ in range(n_targets)
         ]
         
@@ -55,6 +60,9 @@ def generate_single_frame_with_targets_and_mask(
     
     # Compute range-Doppler map
     rdm = compute_range_doppler(clutter_td, rp, cp)
+
+    rdm = np.roll(rdm, shift=roll_amount, axis=1) if random_roll else rdm
+    target_mask = np.roll(target_mask, shift=roll_amount, axis=1) if random_roll else target_mask
     
     return rdm, target_mask
 
@@ -330,23 +338,32 @@ def interactive_visualization(dataset_path: str):
 
 # Example usage
 if __name__ == "__main__":
+    # for sea_state in [1, 3, 5, 7, 9]:
+    #     generate_segmentation_dataset(
+    #         samples_per_class=2000,
+    #         max_targets=10,
+    #         sea_state=sea_state,
+    #         save_path=f'data/sea_clutter_segmentation_{sea_state}_state.pt'
+    #     )
     generate_segmentation_dataset(
         samples_per_class=2000,
         max_targets=10,
         sea_state=5,
-        save_path="data/sea_clutter_segmentation_mediumSCR.pt"
+        save_path='data/sea_clutter_segmentation_roll_RCS.pt'
     )
 
-    # Path to your dataset
-    dataset_path = "data/sea_clutter_segmentation_lowSCR.pt"
+
+
+    # # Path to your dataset
+    # dataset_path = "data/sea_clutter_segmentation_9_state.pt"
     
-    # Visualize a random sample
-    print("=== Single Sample Visualization ===")
-    visualize_sample(dataset_path)
+    # # Visualize a random sample
+    # print("=== Single Sample Visualization ===")
+    # visualize_sample(dataset_path)
     
-    # Visualize class distribution
-    print("\n=== Class Distribution Visualization ===")
-    visualize_class_distribution(dataset_path)
+    # # Visualize class distribution
+    # print("\n=== Class Distribution Visualization ===")
+    # visualize_class_distribution(dataset_path)
     
     # Interactive mode (uncomment to use)
     # print("\n=== Interactive Mode ===")

@@ -6,6 +6,7 @@ import numpy as np
 from sklearn.metrics import confusion_matrix, classification_report
 import torch.nn.functional as F
 import time
+import logging
 
 from load_segmentation_data import create_data_loaders  # Your dataset file
 from sklearn.metrics import precision_score, recall_score
@@ -80,13 +81,12 @@ def evaluate(model, loader, device) -> Tuple[float, float, float]:
 # ---------------------------
 # 3. Training Loop
 # ---------------------------
-def train_model(dataset_path: str, num_epochs=25, batch_size=16, lr=1e-4, pretrained=None, model_save_path='unet_sea_clutter.pth'):
+def train_model(dataset_path: str, num_epochs=30, batch_size=16, lr=1e-4, pretrained=None, model_save_path='unet_sea_clutter.pt'):
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
 
     train_loader, val_loader, _ = create_data_loaders(
         dataset_path=dataset_path,
         batch_size=batch_size,
-        normalize=False
     )
 
     model = UNet().to(device)
@@ -98,7 +98,7 @@ def train_model(dataset_path: str, num_epochs=25, batch_size=16, lr=1e-4, pretra
 
     # Early stopping variables
     best_dice = 0.0
-    patience = 10
+    patience = 6
     patience_counter = 0
 
     for epoch in range(num_epochs):
@@ -118,7 +118,8 @@ def train_model(dataset_path: str, num_epochs=25, batch_size=16, lr=1e-4, pretra
         # Validation after every epoch
         dice, prec, recall = evaluate(model, val_loader, device)
         avg_epoch_loss = epoch_loss / len(train_loader)
-        print(f"Epoch {epoch+1}/{num_epochs} | Loss: {avg_epoch_loss:.4f} | Dice: {dice:.3f} | Precision: {prec:.3f} | Recall: {recall:.3f}")
+        if epoch % 5 == 0 or epoch == num_epochs - 1:
+            print(f"Epoch {epoch+1}/{num_epochs} | Loss: {avg_epoch_loss:.4f} | Dice: {dice:.3f} | Precision: {prec:.3f} | Recall: {recall:.3f}")
 
         # Early stopping logic
         if dice > best_dice:
@@ -139,7 +140,7 @@ def train_model(dataset_path: str, num_epochs=25, batch_size=16, lr=1e-4, pretra
 # ---------------------------
 # 4. Interpret Model Results
 # ---------------------------
-def interpret_model_results(model_path: str, dataset_path: str, batch_size=16, num_samples=5, save_plots=True):
+def interpret_model_results(model_path: str, dataset_path: str, batch_size=16, num_samples=5, save_plots=None, log_file=None):
     """
     Interpret and visualize the results of the trained model.
     
@@ -149,7 +150,23 @@ def interpret_model_results(model_path: str, dataset_path: str, batch_size=16, n
         batch_size: Batch size for data loading
         num_samples: Number of sample predictions to visualize
         save_plots: Whether to save plots to disk
+        log_file: Path to log file (if None, prints to console)
     """
+    # Setup logging
+    if log_file:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file, mode='w'),
+                logging.StreamHandler()  # Also print to console
+            ]
+        )
+        logger = logging.getLogger(__name__)
+        log_func = logger.info
+    else:
+        log_func = print
+    
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
     # Load model
@@ -161,25 +178,24 @@ def interpret_model_results(model_path: str, dataset_path: str, batch_size=16, n
     _, val_loader, test_loader = create_data_loaders(
         dataset_path=dataset_path,
         batch_size=batch_size,
-        normalize=False
     )
     
     # Use test set if available, otherwise validation set
     eval_loader = test_loader if test_loader.dataset.__len__() > 0 else val_loader
     
-    print("=" * 60)
-    print("MODEL INTERPRETATION RESULTS")
-    print("=" * 60)
+    log_func("=" * 60)
+    log_func("MODEL INTERPRETATION RESULTS")
+    log_func("=" * 60)
     
     # 1. Overall Performance Metrics
     dice, precision, recall = evaluate(model, eval_loader, device)
     f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
     
-    print(f"\nOverall Performance on {'Test' if test_loader.dataset.__len__() > 0 else 'Validation'} Set:")
-    print(f"Dice Coefficient: {dice:.4f}")
-    print(f"Precision: {precision:.4f}")
-    print(f"Recall: {recall:.4f}")
-    print(f"F1-Score: {f1_score:.4f}")
+    log_func(f"\nOverall Performance on {'Test' if test_loader.dataset.__len__() > 0 else 'Validation'} Set:")
+    log_func(f"Dice Coefficient: {dice:.4f}")
+    log_func(f"Precision: {precision:.4f}")
+    log_func(f"Recall: {recall:.4f}")
+    log_func(f"F1-Score: {f1_score:.4f}")
     
     # 2. Detailed per-batch analysis
     all_predictions = []
@@ -210,21 +226,21 @@ def interpret_model_results(model_path: str, dataset_path: str, batch_size=16, n
     cm = confusion_matrix(flat_targets, flat_preds)
     tn, fp, fn, tp = cm.ravel()
     
-    print(f"\nConfusion Matrix Analysis:")
-    print(f"True Negatives: {tn}")
-    print(f"False Positives: {fp}")
-    print(f"False Negatives: {fn}")
-    print(f"True Positives: {tp}")
-    print(f"Specificity: {tn/(tn+fp):.4f}")
-    print(f"IoU (Jaccard): {tp/(tp+fp+fn):.4f}")
+    log_func(f"\nConfusion Matrix Analysis:")
+    log_func(f"True Negatives: {tn}")
+    log_func(f"False Positives: {fp}")
+    log_func(f"False Negatives: {fn}")
+    log_func(f"True Positives: {tp}")
+    log_func(f"Specificity: {tn/(tn+fp):.4f}")
+    log_func(f"IoU (Jaccard): {tp/(tp+fp+fn):.4f}")
     
     # 4. Confidence Analysis
     conf_array = np.array(confidence_scores)
-    print(f"\nPrediction Confidence Analysis:")
-    print(f"Mean Confidence: {conf_array.mean():.4f}")
-    print(f"Std Confidence: {conf_array.std():.4f}")
-    print(f"Min Confidence: {conf_array.min():.4f}")
-    print(f"Max Confidence: {conf_array.max():.4f}")
+    log_func(f"\nPrediction Confidence Analysis:")
+    log_func(f"Mean Confidence: {conf_array.mean():.4f}")
+    log_func(f"Std Confidence: {conf_array.std():.4f}")
+    log_func(f"Min Confidence: {conf_array.min():.4f}")
+    log_func(f"Max Confidence: {conf_array.max():.4f}")
     
     # 5. Visualizations
     fig, axes = plt.subplots(num_samples, 4, figsize=(16, 4*num_samples))
@@ -261,19 +277,20 @@ def interpret_model_results(model_path: str, dataset_path: str, batch_size=16, n
         # Calculate sample-specific metrics
         sample_dice = dice_coeff(torch.tensor(prediction).unsqueeze(0).unsqueeze(0), 
                                 torch.tensor(target).unsqueeze(0).unsqueeze(0))
-        print(f"Sample {i+1} Dice: {sample_dice:.4f}")
+        log_func(f"Sample {i+1} Dice: {sample_dice:.4f}")
     
     plt.tight_layout()
-    if save_plots:
-        plt.savefig('model_interpretation_results.png', dpi=300, bbox_inches='tight')
-        print(f"\nVisualization saved as 'model_interpretation_results.png'")
-    plt.show()
+    if save_plots is not None:
+        plt.savefig(save_plots, dpi=300, bbox_inches='tight')
+        log_func(f"\nVisualization saved as {save_plots}")
+    else:
+        plt.show()
     
     # 6. Error Analysis
-    print(f"\nError Analysis:")
+    log_func(f"\nError Analysis:")
     errors = np.abs(flat_preds - flat_targets)
     error_rate = errors.mean()
-    print(f"Pixel-wise Error Rate: {error_rate:.4f}")
+    log_func(f"Pixel-wise Error Rate: {error_rate:.4f}")
     
     # Find worst performing samples
     sample_dice_scores = []
@@ -285,8 +302,8 @@ def interpret_model_results(model_path: str, dataset_path: str, batch_size=16, n
     worst_idx = np.argmin(sample_dice_scores)
     best_idx = np.argmax(sample_dice_scores)
     
-    print(f"Best sample Dice: {sample_dice_scores[best_idx]:.4f} (Sample {best_idx})")
-    print(f"Worst sample Dice: {sample_dice_scores[worst_idx]:.4f} (Sample {worst_idx})")
+    log_func(f"Best sample Dice: {sample_dice_scores[best_idx]:.4f} (Sample {best_idx})")
+    log_func(f"Worst sample Dice: {sample_dice_scores[worst_idx]:.4f} (Sample {worst_idx})")
     
     return {
         'dice': dice,
@@ -326,7 +343,6 @@ def plot_specific_sample(model_path: str, dataset_path: str, sample_idx: int, ba
     _, val_loader, test_loader = create_data_loaders(
         dataset_path=dataset_path,
         batch_size=batch_size,
-        normalize=False
     )
     
     eval_loader = test_loader if test_loader.dataset.__len__() > 0 else val_loader
@@ -464,7 +480,6 @@ def measure_inference_time(model_path: str, dataset_path: str, batch_size=16, nu
     _, val_loader, test_loader = create_data_loaders(
         dataset_path=dataset_path,
         batch_size=batch_size,
-        normalize=False
     )
     
     eval_loader = test_loader if test_loader.dataset.__len__() > 0 else val_loader
@@ -615,25 +630,28 @@ def compare_batch_sizes(model_path: str, dataset_path: str, batch_sizes=[1, 4, 8
 # 6. Entry Point (Updated)
 # ---------------------------
 if __name__ == "__main__":
-    dataset_file = "/Users/pepijnlens/Documents/transformers/data/sea_clutter_segmentation_lowSCR.pt"
-    model_file = "unet_sea_clutter.pth"
+    sea_state = 'roll' 
+
+    dataset_file = f"/Users/pepijnlens/Documents/transformers/data/sea_clutter_segmentation_roll_RCS.pt"
+    model_file = f"models/unet_{sea_state}_state.pt"
+    intrepretation_file = f"interpretation_results_{sea_state}_state.png"
+    log_file = f"interpretation_results_{sea_state}_state.log"
     
-    # # Train the model
-    # train_model(dataset_file, pretrained='unet_sea_clutter-high.pth')
-    
-    # # Interpret the results
-    # print("\n" + "="*60)
-    # print("INTERPRETING MODEL RESULTS...")
-    # print("="*60)
-    # interpret_model_results(model_file, dataset_file, num_samples=5)
-    
-    # Plot specific sample (sample 9)
+    train_model(dataset_file, num_epochs=30, batch_size=16, lr=1e-4, model_save_path=model_file)
+
+    # Interpret the results
     print("\n" + "="*60)
-    print("ANALYZING SAMPLE 9...")
+    print("INTERPRETING MODEL RESULTS...")
     print("="*60)
-    for i in range(10):
-        print(f"Analyzing sample {i}...")
-        plot_specific_sample(model_file, dataset_file, sample_idx=i+233)
+    interpret_model_results(model_file, dataset_file, num_samples=5, save_plots=intrepretation_file, log_file=log_file)
+    
+    # # Plot specific sample (sample 9)
+    # print("\n" + "="*60)
+    # print("ANALYZING SAMPLE 9...")
+    # print("="*60)
+    # for i in range(10):
+    #     print(f"Analyzing sample {i}...")
+    #     plot_specific_sample(model_file, dataset_file, sample_idx=i+233)
 
     # plot_specific_sample(model_file, dataset_file, sample_idx=987)
     

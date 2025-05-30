@@ -9,7 +9,7 @@ import numpy as np
 import random
 from tqdm import tqdm
 from Parameters import RadarParams, ClutterParams, SequenceParams, TargetType, get_clutter_params_for_sea_state, create_realistic_target
-from rd_map import add_target_blob, compute_range_doppler, simulate_sea_clutter
+from sea_clutter.physics import add_target_blob, compute_range_doppler, simulate_sea_clutter
 from Parameters import Target
 
 

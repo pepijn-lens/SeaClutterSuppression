@@ -20,9 +20,6 @@ class RadarSegmentationDataset(Dataset):
         val_ratio: float = 0.15,
         test_ratio: float = 0.15,
         random_state: int = 42,
-        transform: Optional[Any] = None,
-        target_transform: Optional[Any] = None,
-        normalize: bool = False,
         add_channel_dim: bool = True
     ):
         """
@@ -45,9 +42,6 @@ class RadarSegmentationDataset(Dataset):
         assert abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6, "Ratios must sum to 1.0"
         
         self.split = split
-        self.transform = transform
-        self.target_transform = target_transform
-        self.normalize = normalize
         self.add_channel_dim = add_channel_dim
         
         # Load the dataset
@@ -63,19 +57,16 @@ class RadarSegmentationDataset(Dataset):
         self.original_mean = self.images.mean().item()
         self.original_std = self.images.std().item()
         
-        print(f"Loaded dataset with {len(self.images)} samples")
-        print(f"Image shape: {self.images.shape}")
-        print(f"Mask shape: {self.masks.shape}")
+        # print(f"Loaded dataset with {len(self.images)} samples")
+        # print(f"Image shape: {self.images.shape}")
+        # print(f"Mask shape: {self.masks.shape}")
         
         # Create train/val/test splits
         if split != 'all':
             self._create_splits(train_ratio, val_ratio, test_ratio, random_state)
         
-        print(f"Using {split} split with {len(self.images)} samples")
-        
-        # Normalize images if requested
-        if self.normalize:
-            self._normalize_images()
+        # print(f"Using {split} split with {len(self.images)} samples")
+
     
     def _create_splits(self, train_ratio: float, val_ratio: float, test_ratio: float, random_state: int):
         """Create train/validation/test splits."""
@@ -119,14 +110,7 @@ class RadarSegmentationDataset(Dataset):
         self.masks = self.masks[split_indices]
         self.labels = self.labels[split_indices]
         
-        print(f"Split sizes - Train: {len(train_indices)}, Val: {len(val_indices)}, Test: {len(test_indices)}")
-    
-    def _normalize_images(self):
-        """Normalize images to [0, 1] range."""
-        img_min = self.images.min()
-        img_max = self.images.max()
-        self.images = (self.images - img_min) / (img_max - img_min + 1e-8)
-        print(f"Normalized images to [0, 1] range (original range: [{img_min:.3f}, {img_max:.3f}])")
+        # print(f"Split sizes - Train: {len(train_indices)}, Val: {len(val_indices)}, Test: {len(test_indices)}")
     
     def __len__(self) -> int:
         """Return the number of samples in the dataset."""
@@ -151,14 +135,7 @@ class RadarSegmentationDataset(Dataset):
         if self.add_channel_dim:
             image = image.unsqueeze(0)  # Shape: (1, H, W)
             mask = mask.unsqueeze(0)    # Shape: (1, H, W)
-        
-        # Apply transforms
-        if self.transform is not None:
-            image = self.transform(image)
-        
-        if self.target_transform is not None:
-            mask = self.target_transform(mask)
-        
+
         return image, mask
     
     def get_sample_with_info(self, idx: int) -> Dict[str, Any]:
@@ -208,7 +185,6 @@ def create_data_loaders(
     test_ratio: float = 0.15,
     random_state: int = 42,
     pin_memory: bool = False,
-    normalize: bool = False
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Create train, validation, and test data loaders.
@@ -234,7 +210,6 @@ def create_data_loaders(
         val_ratio=val_ratio,
         test_ratio=test_ratio,
         random_state=random_state,
-        normalize=normalize
     )
     
     val_dataset = RadarSegmentationDataset(
@@ -244,7 +219,6 @@ def create_data_loaders(
         val_ratio=val_ratio,
         test_ratio=test_ratio,
         random_state=random_state,
-        normalize=normalize
     )
     
     test_dataset = RadarSegmentationDataset(
@@ -254,7 +228,6 @@ def create_data_loaders(
         val_ratio=val_ratio,
         test_ratio=test_ratio,
         random_state=random_state,
-        normalize=normalize
     )
     
     # Create data loaders
@@ -377,10 +350,10 @@ def visualize_sample(dataset_path: str, sample_idx: int = None, figsize: tuple =
 # Example usage and testing
 if __name__ == "__main__":
     
-    visualize_sample("data/sea_clutter_segmentation_dataset.pt", sample_idx=3000)
+    visualize_sample("data/sea_clutter_segmentation_lowSCR.pt", sample_idx=3000)
 
     # Example 1: Create individual dataset
-    dataset_path = "data/sea_clutter_segmentation_dataset.pt"
+    dataset_path = "data/sea_clutter_segmentation_lowSCR.pt"
     
     print("=== Testing Dataset Class ===")
     dataset = RadarSegmentationDataset(dataset_path, split='train')

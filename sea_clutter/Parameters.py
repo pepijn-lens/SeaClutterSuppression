@@ -17,13 +17,13 @@ class RadarParams:
 
 @dataclass
 class ClutterParams:
-    mean_power_db: float = -20.0    # Average clutter power per cell [dB]
-    shape_param: float = 0.01        # Gamma shape κ; smaller → heavier tail
-    ar_coeff: float = 0.98          # Slow-time AR(1) coefficient
-    bragg_offset_hz: Optional[float] = 25.0  # Bragg Doppler [Hz]
-    bragg_width_hz: float = 2.0     # Bragg peak width [Hz]
-    bragg_power_rel: float = 5.0    # Bragg peak height over background [dB]
-    wave_speed_mps: float = 2.0     # Wave propagation speed toward radar [m/s]
+    mean_power_db: float = 15.0        # Increase from 0.0 → much stronger clutter
+    shape_param: float = 0.1           # Increase from 0.01 → more spiky/impulsive
+    ar_coeff: float = 0.85             # Decrease from 0.98 → faster decorrelation
+    bragg_offset_hz: Optional[float] = 45.0  # Increase from 25.0 → stronger Bragg lines
+    bragg_width_hz: float = 4.0        # Increase from 2.0 → broader Bragg peaks
+    bragg_power_rel: float = 8.0       # Increase from 5.0 → stronger Bragg enhancement
+    wave_speed_mps: float = 6.0        # Increase from 2.0 → faster wave motion
 
 
 @dataclass
@@ -34,7 +34,7 @@ class Target:
 
 @dataclass
 class SequenceParams:
-    n_frames: int = 1            # Frames to simulate
+    n_frames: int = 1             # Frames to simulate
     frame_rate_hz: float = 2      # Frames per second
 
 class TargetType(Enum):
@@ -56,8 +56,8 @@ class RealisticTarget:
     # Movement parameters
     base_velocity_mps: float = 5.0      # Base radial velocity [m/s]
     velocity_noise_std: float = 0.5     # Standard deviation of velocity noise
-    max_velocity_mps: float = 20.0      # Maximum possible velocity
-    min_velocity_mps: float = -20.0     # Minimum possible velocity (negative = approaching)
+    max_velocity_mps: float = 36.0      # Maximum possible velocity
+    min_velocity_mps: float = -36.0     # Minimum possible velocity (negative = approaching)
     
     # Internal state for realistic movement
     current_velocity_mps: float = 0.0   # Current radial velocity
@@ -77,7 +77,7 @@ def get_clutter_params_for_sea_state(state: int) -> ClutterParams:
     """
     configs = {
         1: {  # Calm seas
-            'mean_power_db': -35.0,      # Very low clutter power
+            'mean_power_db': -5.0,      # Very low clutter power
             'shape_param': 0.8,          # More Gaussian-like (less spiky)
             'ar_coeff': 0.998,           # Very stable, slow decorrelation
             'bragg_offset_hz': 15.0,     # Weak Bragg lines
@@ -86,7 +86,7 @@ def get_clutter_params_for_sea_state(state: int) -> ClutterParams:
             'wave_speed_mps': 1.0        # Slow wave movement
         },
         3: {  # Slight seas
-            'mean_power_db': -28.0,      # Low clutter power
+            'mean_power_db': -1.0,      # Low clutter power
             'shape_param': 0.5,          # Moderate non-Gaussianity
             'ar_coeff': 0.995,           # High correlation
             'bragg_offset_hz': 20.0,     # Moderate Bragg lines
@@ -95,31 +95,31 @@ def get_clutter_params_for_sea_state(state: int) -> ClutterParams:
             'wave_speed_mps': 2.0        # Moderate wave movement
         },
         5: {  # Moderate seas
-            'mean_power_db': 10.0,      # Moderate clutter power
-            'shape_param': 0.1,          # Significant non-Gaussianity
-            'ar_coeff': 0.95,           # Moderate correlation
-            'bragg_offset_hz': 25.0,     # Strong Bragg lines
+            'mean_power_db': 12.0,      # Moderate clutter power
+            'shape_param': 0.3,          # Significant non-Gaussianity
+            'ar_coeff': 0.9,           # Moderate correlation
+            'bragg_offset_hz': None,     # Strong Bragg lines
             'bragg_width_hz': 2.0,       # Wider Bragg peaks
-            'bragg_power_rel': 5.0,      # Strong Bragg enhancement
-            'wave_speed_mps': 3.0        # Moderate-fast wave movement
+            'bragg_power_rel': 4.0,      # Strong Bragg enhancement
+            'wave_speed_mps': 4.0        # Moderate-fast wave movement
         },
         7: {  # Rough seas
-            'mean_power_db': -18.0,      # High clutter power
-            'shape_param': 0.15,         # Strong non-Gaussianity (spiky)
+            'mean_power_db': 7,      # High clutter power
+            'shape_param': 0.30,         # Strong non-Gaussianity (spiky)
             'ar_coeff': 0.975,           # Lower correlation (faster decorrelation)
-            'bragg_offset_hz': 30.0,     # Very strong Bragg lines
-            'bragg_width_hz': 3.0,       # Broad Bragg peaks
-            'bragg_power_rel': 6.0,      # Very strong Bragg enhancement
+            'bragg_offset_hz': 40.0,     # Very strong Bragg lines
+            'bragg_width_hz': 2.5,       # Broad Bragg peaks
+            'bragg_power_rel': 4.0,      # Very strong Bragg enhancement
             'wave_speed_mps': 4.5        # Fast wave movement
         },
         9: {  # Very rough seas
-            'mean_power_db': -15.0,      # Very high clutter power
-            'shape_param': 0.05,         # Extreme non-Gaussianity (very spiky)
-            'ar_coeff': 0.950,           # Low correlation (rapid decorrelation)
-            'bragg_offset_hz': 35.0,     # Extreme Bragg lines
-            'bragg_width_hz': 4.0,       # Very broad Bragg peaks
-            'bragg_power_rel': 8.0,      # Extreme Bragg enhancement
-            'wave_speed_mps': 6.0        # Very fast wave movement
+            'mean_power_db': 11,      # Very high clutter power
+            'shape_param': 0.25,         # Extreme non-Gaussianity (very spiky)
+            'ar_coeff': 0.95,           # Low correlation (rapid decorrelation)
+            'bragg_offset_hz': 50.0,     # Extreme Bragg lines
+            'bragg_width_hz': 3.0,       # Very broad Bragg peaks
+            'bragg_power_rel': 5.0,      # Extreme Bragg enhancement
+            'wave_speed_mps': 5.0        # Very fast wave movement
         },
     }
     
@@ -220,15 +220,17 @@ def create_realistic_target(target_type: TargetType, initial_range_idx: int, rp:
             current_velocity_mps=base_velocity
         )
     
-    else:
+    elif target_type == TargetType.FIXED:
         # Default case
-        base_velocity = np.random.uniform(-20, 20)
+        base_velocity = np.random.uniform(-30, 30)
         return RealisticTarget(
             rng_idx=initial_range_idx,
             doppler_hz=2.0 * base_velocity / rp.carrier_wavelength,
-            power=15, #np.random.uniform(0.01,0.08),
+            power=np.random.uniform(10, 11),
             target_type=target_type,
             base_velocity_mps=base_velocity,
             velocity_noise_std=standard_velocity_noise_std,    # Standardized
+            max_velocity_mps=36.0,
+            min_velocity_mps=-36.0,
             current_velocity_mps=base_velocity
         )

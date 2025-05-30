@@ -1,0 +1,105 @@
+2025-05-30 15:56:05,278 - ============================================================
+2025-05-30 15:56:05,279 - MODEL INTERPRETATION RESULTS
+2025-05-30 15:56:05,279 - ============================================================
+2025-05-30 15:56:18,399 - 
+Overall Performance on Test Set:
+2025-05-30 15:56:18,399 - Dice Coefficient: 0.9793
+2025-05-30 15:56:18,399 - Precision: 0.9864
+2025-05-30 15:56:18,399 - Recall: 0.9725
+2025-05-30 15:56:18,399 - F1-Score: 0.9794
+2025-05-30 15:56:20,379 - 
+Confusion Matrix Analysis:
+2025-05-30 15:56:20,379 - True Negatives: 1309244
+2025-05-30 15:56:20,379 - False Positives: 19
+2025-05-30 15:56:20,379 - False Negatives: 20
+2025-05-30 15:56:20,379 - True Positives: 1437
+2025-05-30 15:56:20,379 - Specificity: 1.0000
+2025-05-30 15:56:20,379 - IoU (Jaccard): 0.9736
+2025-05-30 15:56:20,379 - 
+Prediction Confidence Analysis:
+2025-05-30 15:56:20,380 - Mean Confidence: 0.0011
+2025-05-30 15:56:20,380 - Std Confidence: 0.0331
+2025-05-30 15:56:20,380 - Min Confidence: 0.0000
+2025-05-30 15:56:20,380 - Max Confidence: 1.0000
+2025-05-30 15:56:20,582 - Sample 1 Dice: 0.9245
+2025-05-30 15:56:20,585 - Sample 2 Dice: 1.0000
+2025-05-30 15:56:20,589 - Sample 3 Dice: 1.0000
+2025-05-30 15:56:20,593 - Sample 4 Dice: 1.0000
+2025-05-30 15:56:20,596 - Sample 5 Dice: 1.0000
+2025-05-30 15:56:21,639 - 
+Visualization saved as interpretation_results_3_state.png
+2025-05-30 15:56:21,639 - 
+Error Analysis:
+2025-05-30 15:56:21,641 - Pixel-wise Error Rate: 0.0000
+2025-05-30 15:56:21,645 - Best sample Dice: 1.0000 (Sample 1)
+2025-05-30 15:56:21,645 - Worst sample Dice: 0.8919 (Sample 18)
+2025-05-30 16:48:38,459 - ============================================================
+2025-05-30 16:48:38,460 - MODEL INTERPRETATION RESULTS
+2025-05-30 16:48:38,460 - ============================================================
+2025-05-30 16:48:51,532 - 
+Overall Performance on Test Set:
+2025-05-30 16:48:51,532 - Dice Coefficient: 0.9734
+2025-05-30 16:48:51,532 - Precision: 0.9844
+2025-05-30 16:48:51,532 - Recall: 0.9627
+2025-05-30 16:48:51,532 - F1-Score: 0.9734
+2025-05-30 16:48:53,510 - 
+Confusion Matrix Analysis:
+2025-05-30 16:48:53,510 - True Negatives: 1309232
+2025-05-30 16:48:53,510 - False Positives: 28
+2025-05-30 16:48:53,510 - False Negatives: 61
+2025-05-30 16:48:53,510 - True Positives: 1399
+2025-05-30 16:48:53,510 - Specificity: 1.0000
+2025-05-30 16:48:53,510 - IoU (Jaccard): 0.9402
+2025-05-30 16:48:53,511 - 
+Prediction Confidence Analysis:
+2025-05-30 16:48:53,511 - Mean Confidence: 0.0011
+2025-05-30 16:48:53,512 - Std Confidence: 0.0327
+2025-05-30 16:48:53,512 - Min Confidence: 0.0000
+2025-05-30 16:48:53,512 - Max Confidence: 1.0000
+2025-05-30 16:48:53,560 - Sample 1 Dice: 0.9111
+2025-05-30 16:48:53,564 - Sample 2 Dice: 1.0000
+2025-05-30 16:48:53,568 - Sample 3 Dice: 1.0000
+2025-05-30 16:48:53,572 - Sample 4 Dice: 0.9706
+2025-05-30 16:48:53,576 - Sample 5 Dice: 1.0000
+2025-05-30 16:48:54,600 - 
+Visualization saved as interpretation_results_5_state.png
+2025-05-30 16:48:54,600 - 
+Error Analysis:
+2025-05-30 16:48:54,601 - Pixel-wise Error Rate: 0.0001
+2025-05-30 16:48:54,605 - Best sample Dice: 1.0000 (Sample 1)
+2025-05-30 16:48:54,605 - Worst sample Dice: 0.3333 (Sample 57)
+2025-05-30 17:40:59,449 - ============================================================
+2025-05-30 17:40:59,450 - MODEL INTERPRETATION RESULTS
+2025-05-30 17:40:59,451 - ============================================================
+2025-05-30 17:41:12,981 - 
+Overall Performance on Test Set:
+2025-05-30 17:41:12,982 - Dice Coefficient: 0.9546
+2025-05-30 17:41:12,982 - Precision: 0.9858
+2025-05-30 17:41:12,982 - Recall: 0.9255
+2025-05-30 17:41:12,982 - F1-Score: 0.9547
+2025-05-30 17:41:14,996 - 
+Confusion Matrix Analysis:
+2025-05-30 17:41:14,996 - True Negatives: 1309240
+2025-05-30 17:41:14,996 - False Positives: 20
+2025-05-30 17:41:14,996 - False Negatives: 107
+2025-05-30 17:41:14,996 - True Positives: 1353
+2025-05-30 17:41:14,996 - Specificity: 1.0000
+2025-05-30 17:41:14,996 - IoU (Jaccard): 0.9142
+2025-05-30 17:41:14,996 - 
+Prediction Confidence Analysis:
+2025-05-30 17:41:14,996 - Mean Confidence: 0.0011
+2025-05-30 17:41:14,997 - Std Confidence: 0.0321
+2025-05-30 17:41:14,997 - Min Confidence: 0.0000
+2025-05-30 17:41:14,997 - Max Confidence: 1.0000
+2025-05-30 17:41:15,137 - Sample 1 Dice: 1.0000
+2025-05-30 17:41:15,140 - Sample 2 Dice: 1.0000
+2025-05-30 17:41:15,145 - Sample 3 Dice: 1.0000
+2025-05-30 17:41:15,148 - Sample 4 Dice: 0.9355
+2025-05-30 17:41:15,152 - Sample 5 Dice: 1.0000
+2025-05-30 17:41:16,204 - 
+Visualization saved as interpretation_results_7_state.png
+2025-05-30 17:41:16,204 - 
+Error Analysis:
+2025-05-30 17:41:16,205 - Pixel-wise Error Rate: 0.0001
+2025-05-30 17:41:16,209 - Best sample Dice: 1.0000 (Sample 0)
+2025-05-30 17:41:16,209 - Worst sample Dice: 0.2500 (Sample 53)

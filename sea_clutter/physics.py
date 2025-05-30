@@ -80,7 +80,7 @@ def simulate_sea_clutter(
     if texture is None:
         texture = _generate_texture(rp.n_ranges, rp.n_pulses, cp.shape_param)
     speckle = _generate_speckle(rp.n_ranges, rp.n_pulses, cp.ar_coeff, init_state=init_speckle)
-    clutter_td = np.sqrt(texture) * speckle * 10.0 ** (cp.mean_power_db / 20.0)
+    clutter_td = texture * speckle * 10.0 ** (cp.mean_power_db / 20.0)
     
     # Add thermal noise if specified
     if thermal_noise_db is not None:
@@ -94,7 +94,8 @@ def add_target_blob(signal_td: np.ndarray, tgt: Target, rp: RadarParams):
     """Add a target at tgt.rng_idx with given power and Doppler."""
     n = np.arange(rp.n_pulses)
     phase = np.exp(1j * 2.0 * np.pi * tgt.doppler_hz * n / rp.prf)
-    amp_center = np.sqrt(10 ** (tgt.power/20))
+    # Fix: Use consistent dB to amplitude scaling
+    amp_center = 10.0 ** (tgt.power / 20.0)
     idx = tgt.rng_idx
     if 0 <= idx < rp.n_ranges: 
         signal_td[idx] += amp_center * phase
