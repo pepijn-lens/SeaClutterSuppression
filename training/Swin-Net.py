@@ -307,7 +307,8 @@ class SwinUNET(nn.Module):
     """Swin-UNET for Sea Clutter Suppression"""
     def __init__(self, img_size=256, patch_size=4, in_chans=3, num_classes=1,
                  embed_dim=96, depths=[2, 2, 2, 2], depths_decoder=[1, 2, 2, 2], num_heads=[3, 6, 12, 24],
-                 window_size=8, mlp_ratio=4., qkv_bias=True, drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1):
+                 window_size=8, mlp_ratio=4., qkv_bias=True, drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
+                 final_upsample="expand_first"):  # Add this parameter
         super().__init__()
         
         self.num_classes = num_classes
@@ -317,6 +318,7 @@ class SwinUNET(nn.Module):
         self.num_features = int(embed_dim * 2 ** (self.num_layers - 1))
         self.num_features_up = int(embed_dim * 2)
         self.mlp_ratio = mlp_ratio
+        self.final_upsample = final_upsample  # Add this line
 
         # Split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
