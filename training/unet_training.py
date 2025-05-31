@@ -28,7 +28,7 @@ class DoubleConv(nn.Module):
         return self.double_conv(x)
 
 class UNet(nn.Module):
-    def __init__(self, n_channels=1, n_classes=1):
+    def __init__(self, n_channels=3, n_classes=1):
         super().__init__()
         self.enc1 = DoubleConv(n_channels, 64)
         self.enc2 = DoubleConv(64, 128)
@@ -87,9 +87,12 @@ def train_model(dataset_path: str, num_epochs=30, batch_size=16, lr=1e-4, pretra
     train_loader, val_loader, _ = create_data_loaders(
         dataset_path=dataset_path,
         batch_size=batch_size,
+        mask_strategy='last',
     )
 
-    model = UNet().to(device)
+    model = UNet(n_channels=3).to(device)
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f'{trainable_params:,} trainable parameters')
     if pretrained:
         model.load_state_dict(torch.load(pretrained, map_location=device))
         print(f"Loaded pretrained model from {pretrained}")
@@ -170,7 +173,7 @@ def interpret_model_results(model_path: str, dataset_path: str, batch_size=16, n
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
     # Load model
-    model = UNet().to(device)
+    model = UNet(n_channels=3).to(device)  # Add n_channels=3 here
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
     
@@ -248,28 +251,34 @@ def interpret_model_results(model_path: str, dataset_path: str, batch_size=16, n
         axes = axes.reshape(1, -1)
     
     for i in range(min(num_samples, len(all_images))):
-        image = all_images[i][0]  # Remove channel dimension for visualization
+        # For sequence data, we need to handle the 3-channel input differently
+        # Show the middle frame for visualization
+        if all_images[i].shape[0] == 3:  # 3 frames as channels
+            image = all_images[i][1]  # Use middle frame (index 1)
+        else:
+            image = all_images[i][0]  # Single channel
+            
         target = all_targets[i][0]
         prediction = all_predictions[i][0]
         confidence = confidence_scores[i][0]
         
-        # Original image
-        axes[i, 0].imshow(image)
-        axes[i, 0].set_title(f'Original Image {i+1}')
+        # Original image (middle frame)
+        axes[i, 0].imshow(image, cmap='viridis', aspect='auto', origin='lower')
+        axes[i, 0].set_title(f'Input Frame {i+1} (Last Frame)')
         axes[i, 0].axis('off')
         
         # Ground truth mask
-        axes[i, 1].imshow(target, cmap='Reds', alpha=0.7)
+        axes[i, 1].imshow(target, cmap='Reds', alpha=0.7, aspect='auto', origin='lower')
         axes[i, 1].set_title('Ground Truth')
         axes[i, 1].axis('off')
         
         # Prediction
-        axes[i, 2].imshow(prediction, cmap='Blues', alpha=0.7)
+        axes[i, 2].imshow(prediction, cmap='Blues', alpha=0.7, aspect='auto', origin='lower')
         axes[i, 2].set_title('Prediction')
         axes[i, 2].axis('off')
         
         # Confidence map
-        im = axes[i, 3].imshow(confidence, cmap='viridis', vmin=0, vmax=1)
+        im = axes[i, 3].imshow(confidence, cmap='viridis', vmin=0, vmax=1, aspect='auto', origin='lower')
         axes[i, 3].set_title('Confidence Map')
         axes[i, 3].axis('off')
         plt.colorbar(im, ax=axes[i, 3], fraction=0.046, pad=0.04)
@@ -335,7 +344,7 @@ def plot_specific_sample(model_path: str, dataset_path: str, sample_idx: int, ba
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
     # Load model
-    model = UNet().to(device)
+    model = UNet(n_channels=3).to(device)  # Add n_channels=3 here
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
     
@@ -472,7 +481,7 @@ def measure_inference_time(model_path: str, dataset_path: str, batch_size=16, nu
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
     # Load model
-    model = UNet().to(device)
+    model = UNet(n_channels=3).to(device)  # Add n_channels=3 here
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
     
@@ -630,14 +639,14 @@ def compare_batch_sizes(model_path: str, dataset_path: str, batch_sizes=[1, 4, 8
 # 6. Entry Point (Updated)
 # ---------------------------
 if __name__ == "__main__":
-    sea_state = 'roll' 
+    sea_state = 'sequences' 
 
-    dataset_file = f"/Users/pepijnlens/Documents/transformers/data/sea_clutter_segmentation_roll_RCS.pt"
-    model_file = f"models/unet_{sea_state}_state.pt"
-    intrepretation_file = f"interpretation_results_{sea_state}_state.png"
-    log_file = f"interpretation_results_{sea_state}_state.log"
+    dataset_file = f"/Users/pepijnlens/Documents/transformers/data/sea_clutter_segmentation_sequences.pt"
+    model_file = f"models/unet_{sea_state}.pt"
+    intrepretation_file = f"interpretation_results_{sea_state}.png"
+    log_file = f"interpretation_results_{sea_state}.log"
     
-    train_model(dataset_file, num_epochs=30, batch_size=16, lr=1e-4, model_save_path=model_file)
+    train_model(dataset_file, num_epochs=50, batch_size=16, lr=1e-4, model_save_path=model_file)
 
     # Interpret the results
     print("\n" + "="*60)

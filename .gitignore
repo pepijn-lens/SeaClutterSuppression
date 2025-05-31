@@ -14,6 +14,7 @@ segmentation_dataset/
 __pycache__/
 attention_maps*
 
+Swin_Net.pt
 # Ignore Python cache files
 __pycache__/
 # Ignore Jupyter Notebook checkpoints

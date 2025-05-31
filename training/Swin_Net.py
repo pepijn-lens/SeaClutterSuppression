@@ -9,7 +9,7 @@ import math
 
 class PatchEmbed(nn.Module):
     """Image to Patch Embedding"""
-    def __init__(self, img_size=224, patch_size=4, in_chans=3, embed_dim=96):
+    def __init__(self, img_size=128, patch_size=4, in_chans=1, embed_dim=32):
         super().__init__()
         img_size = (img_size, img_size)
         patch_size = (patch_size, patch_size)
@@ -133,7 +133,7 @@ def window_reverse(windows, window_size, H, W):
 
 class SwinTransformerBlock(nn.Module):
     """Swin Transformer Block"""
-    def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
+    def __init__(self, dim, input_resolution, num_heads, window_size=4, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, drop=0., attn_drop=0., drop_path=0.):
         super().__init__()
         self.dim = dim
@@ -458,7 +458,6 @@ class RadarClutterDataset(Dataset):
         self.radar_frames = radar_frames
         self.ground_truth_masks = ground_truth_masks
         self.num_frames = num_frames
-        self.transform = transform
         
         # Calculate valid indices (ensuring we have enough frames)
         self.valid_indices = list(range(num_frames-1, len(radar_frames)))
@@ -482,11 +481,6 @@ class RadarClutterDataset(Dataset):
         # Convert to tensors
         input_tensor = torch.FloatTensor(input_tensor)
         target_mask = torch.FloatTensor(target_mask).unsqueeze(0)  # Add channel dim
-        
-        if self.transform:
-            # Apply same transform to input and target
-            input_tensor = self.transform(input_tensor)
-            target_mask = self.transform(target_mask)
         
         return input_tensor, target_mask
 

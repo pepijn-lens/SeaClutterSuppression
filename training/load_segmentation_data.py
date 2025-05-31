@@ -4,12 +4,13 @@ import numpy as np
 from typing import Optional, Tuple, Dict, Any
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
+import random
 
 class RadarSegmentationDataset(Dataset):
     """
-    PyTorch Dataset class for radar target segmentation with U-Net.
+    PyTorch Dataset class for radar target segmentation with U-Net using sequence data.
     
-    This dataset loads Range-Doppler Maps and their corresponding binary target masks.
+    This dataset loads Range-Doppler Map sequences and their corresponding binary target masks.
     """
     
     def __init__(
@@ -20,7 +21,7 @@ class RadarSegmentationDataset(Dataset):
         val_ratio: float = 0.15,
         test_ratio: float = 0.15,
         random_state: int = 42,
-        add_channel_dim: bool = True
+        mask_strategy: str = 'last'  # 'middle', 'last', 'aggregate'
     ):
         """
         Initialize the dataset.
@@ -32,46 +33,61 @@ class RadarSegmentationDataset(Dataset):
             val_ratio: Fraction of data for validation  
             test_ratio: Fraction of data for testing
             random_state: Random seed for reproducible splits
-            transform: Optional transform to apply to images
-            target_transform: Optional transform to apply to masks
-            normalize: Whether to normalize images to [0, 1] range
-            add_channel_dim: Whether to add channel dimension for U-Net (C, H, W)
+            mask_strategy: How to handle sequence masks:
+                - 'middle': Use middle frame mask
+                - 'last': Use last frame mask
+                - 'aggregate': Combine all masks (logical OR)
         """
         
         assert split in ['train', 'val', 'test', 'all'], f"Invalid split: {split}"
         assert abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6, "Ratios must sum to 1.0"
+        assert mask_strategy in ['middle', 'last', 'aggregate'], f"Invalid mask_strategy: {mask_strategy}"
         
         self.split = split
-        self.add_channel_dim = add_channel_dim
+        self.mask_strategy = mask_strategy
         
         # Load the dataset
         print(f"Loading dataset from: {dataset_path}")
         dataset = torch.load(dataset_path, map_location='cpu')
         
-        self.images = dataset['images']
-        self.masks = dataset['masks']
+        # Check if this is sequence data or single frame data
+        if 'sequences' in dataset:
+            # Sequence data
+            self.sequences = dataset['sequences']  # Shape: (N, n_frames, H, W)
+            self.mask_sequences = dataset['mask_sequences']  # Shape: (N, n_frames, H, W)
+            self.is_sequence = True
+            self.n_frames = self.sequences.shape[1]
+            print(f"Loaded sequence dataset with {self.n_frames} frames per sequence")
+        else:
+            # Single frame data - convert to sequence format for compatibility
+            self.sequences = dataset['images'].unsqueeze(1)  # Add frame dimension
+            self.mask_sequences = dataset['masks'].unsqueeze(1)
+            self.is_sequence = False
+            self.n_frames = 1
+            print("Loaded single frame dataset, converted to sequence format")
+        
         self.labels = dataset['labels']  # Number of targets (for reference)
         self.metadata = dataset['metadata']
         
         # Store original statistics for potential denormalization
-        self.original_mean = self.images.mean().item()
-        self.original_std = self.images.std().item()
+        self.original_mean = self.sequences.mean().item()
+        self.original_std = self.sequences.std().item()
         
-        # print(f"Loaded dataset with {len(self.images)} samples")
-        # print(f"Image shape: {self.images.shape}")
-        # print(f"Mask shape: {self.masks.shape}")
+        print(f"Loaded dataset with {len(self.sequences)} samples")
+        print(f"Sequence shape: {self.sequences.shape}")
+        print(f"Mask sequence shape: {self.mask_sequences.shape}")
         
         # Create train/val/test splits
         if split != 'all':
             self._create_splits(train_ratio, val_ratio, test_ratio, random_state)
         
-        # print(f"Using {split} split with {len(self.images)} samples")
+        print(f"Using {split} split with {len(self.sequences)} samples")
 
     
     def _create_splits(self, train_ratio: float, val_ratio: float, test_ratio: float, random_state: int):
         """Create train/validation/test splits."""
         
-        n_samples = len(self.images)
+        n_samples = len(self.sequences)
         indices = np.arange(n_samples)
         
         # First split: separate train from (val + test)
@@ -106,15 +122,15 @@ class RadarSegmentationDataset(Dataset):
             split_indices = test_indices
         
         # Filter data based on split
-        self.images = self.images[split_indices]
-        self.masks = self.masks[split_indices]
+        self.sequences = self.sequences[split_indices]
+        self.mask_sequences = self.mask_sequences[split_indices]
         self.labels = self.labels[split_indices]
         
-        # print(f"Split sizes - Train: {len(train_indices)}, Val: {len(val_indices)}, Test: {len(test_indices)}")
+        print(f"Split sizes - Train: {len(train_indices)}, Val: {len(val_indices)}, Test: {len(test_indices)}")
     
     def __len__(self) -> int:
         """Return the number of samples in the dataset."""
-        return len(self.images)
+        return len(self.sequences)
     
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -124,17 +140,30 @@ class RadarSegmentationDataset(Dataset):
             idx: Sample index
             
         Returns:
-            Tuple of (image, mask) tensors
+            Tuple of (sequence_as_channels, target_mask) tensors
         """
         
-        # Get image and mask
-        image = self.images[idx].clone()  # Shape: (H, W)
-        mask = self.masks[idx].clone()    # Shape: (H, W)
+        # Get sequence and mask sequence
+        sequence = self.sequences[idx].clone()  # Shape: (n_frames, H, W)
+        mask_sequence = self.mask_sequences[idx].clone()  # Shape: (n_frames, H, W)
         
-        # Add channel dimension if requested (for U-Net: C=1, H, W)
-        if self.add_channel_dim:
-            image = image.unsqueeze(0)  # Shape: (1, H, W)
-            mask = mask.unsqueeze(0)    # Shape: (1, H, W)
+        # Use sequence frames as channels: (n_frames, H, W) -> this becomes (C, H, W) for U-Net
+        image = sequence  # Shape: (3, H, W) for 3 frames
+        
+        # Handle mask based on strategy
+        if self.mask_strategy == 'middle':
+            # Use middle frame mask
+            middle_idx = self.n_frames // 2
+            mask = mask_sequence[middle_idx]  # Shape: (H, W)
+        elif self.mask_strategy == 'last':
+            # Use last frame mask
+            mask = mask_sequence[-1]  # Shape: (H, W)
+        elif self.mask_strategy == 'aggregate':
+            # Aggregate all masks (logical OR)
+            mask = torch.clamp(mask_sequence.sum(dim=0), 0, 1)  # Shape: (H, W)
+        
+        # Add channel dimension to mask for U-Net
+        mask = mask.unsqueeze(0)  # Shape: (1, H, W)
 
         return image, mask
     
@@ -154,9 +183,13 @@ class RadarSegmentationDataset(Dataset):
         return {
             'image': image,
             'mask': mask,
+            'sequence': self.sequences[idx],  # Full sequence
+            'mask_sequence': self.mask_sequences[idx],  # Full mask sequence
             'n_targets': self.labels[idx].item(),
             'idx': idx,
-            'split': self.split
+            'split': self.split,
+            'n_frames': self.n_frames,
+            'mask_strategy': self.mask_strategy
         }
     
     def get_class_distribution(self) -> Dict[int, int]:
@@ -167,12 +200,13 @@ class RadarSegmentationDataset(Dataset):
     def get_dataset_stats(self) -> Dict[str, float]:
         """Get statistics about the dataset."""
         return {
-            'image_mean': self.images.mean().item(),
-            'image_std': self.images.std().item(),
-            'image_min': self.images.min().item(),
-            'image_max': self.images.max().item(),
-            'mask_mean': self.masks.mean().item(),  # Fraction of target pixels
-            'total_target_pixels': self.masks.sum().item(),
+            'sequence_mean': self.sequences.mean().item(),
+            'sequence_std': self.sequences.std().item(),
+            'sequence_min': self.sequences.min().item(),
+            'sequence_max': self.sequences.max().item(),
+            'mask_mean': self.mask_sequences.mean().item(),  # Fraction of target pixels
+            'total_target_pixels': self.mask_sequences.sum().item(),
+            'n_frames': self.n_frames,
         }
 
 
@@ -185,6 +219,7 @@ def create_data_loaders(
     test_ratio: float = 0.15,
     random_state: int = 42,
     pin_memory: bool = False,
+    mask_strategy: str = 'last'
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Create train, validation, and test data loaders.
@@ -196,7 +231,7 @@ def create_data_loaders(
         train_ratio, val_ratio, test_ratio: Data split ratios
         random_state: Random seed for reproducible splits
         pin_memory: Whether to pin memory for faster GPU transfer
-        normalize: Whether to normalize images
+        mask_strategy: How to handle sequence masks ('middle', 'last', 'aggregate')
         
     Returns:
         Tuple of (train_loader, val_loader, test_loader)
@@ -210,6 +245,7 @@ def create_data_loaders(
         val_ratio=val_ratio,
         test_ratio=test_ratio,
         random_state=random_state,
+        mask_strategy=mask_strategy
     )
     
     val_dataset = RadarSegmentationDataset(
@@ -219,6 +255,7 @@ def create_data_loaders(
         val_ratio=val_ratio,
         test_ratio=test_ratio,
         random_state=random_state,
+        mask_strategy=mask_strategy
     )
     
     test_dataset = RadarSegmentationDataset(
@@ -228,6 +265,7 @@ def create_data_loaders(
         val_ratio=val_ratio,
         test_ratio=test_ratio,
         random_state=random_state,
+        mask_strategy=mask_strategy
     )
     
     # Create data loaders
@@ -256,22 +294,18 @@ def create_data_loaders(
         pin_memory=pin_memory
     )
     
-    # print(f"\nData Loaders created:")
-    # print(f"  Train: {len(train_loader)} batches ({len(train_dataset)} samples)")
-    # print(f"  Val:   {len(val_loader)} batches ({len(val_dataset)} samples)")
-    # print(f"  Test:  {len(test_loader)} batches ({len(test_dataset)} samples)")
-    
-    # # Print class distributions
-    # print(f"\nClass distributions:")
-    # print(f"  Train: {train_dataset.get_class_distribution()}")
-    # print(f"  Val:   {val_dataset.get_class_distribution()}")
-    # print(f"  Test:  {test_dataset.get_class_distribution()}")
+    print(f"\nData Loaders created:")
+    print(f"  Train: {len(train_loader)} batches ({len(train_dataset)} samples)")
+    print(f"  Val:   {len(val_loader)} batches ({len(val_dataset)} samples)")
+    print(f"  Test:  {len(test_loader)} batches ({len(test_dataset)} samples)")
+    print(f"  Mask strategy: {mask_strategy}")
+    print(f"  Frames per sequence: {train_dataset.n_frames}")
     
     return train_loader, val_loader, test_loader
 
-def visualize_sample(dataset_path: str, sample_idx: int = None, figsize: tuple = (15, 5)):
+def visualize_sequence_sample(dataset_path: str, sample_idx: int = None):
     """
-    Visualize a sample from the segmentation dataset.
+    Visualize a sequence sample from the segmentation dataset.
     
     Args:
         dataset_path: Path to the saved dataset
@@ -279,6 +313,83 @@ def visualize_sample(dataset_path: str, sample_idx: int = None, figsize: tuple =
         figsize: Figure size for the plot
     """
     
+    # Load dataset
+    print(f"Loading dataset from: {dataset_path}")
+    dataset = torch.load(dataset_path)
+    
+    # Check if sequence data
+    if 'sequences' in dataset:
+        sequences = dataset['sequences']
+        mask_sequences = dataset['mask_sequences']
+        labels = dataset['labels']
+        metadata = dataset['metadata']
+        n_frames = sequences.shape[1]
+    else:
+        print("This appears to be single-frame data, not sequence data")
+        return
+    
+    print(f"Dataset info:")
+    print(f"  Total samples: {len(sequences)}")
+    print(f"  Sequence shape: {sequences.shape}")
+    print(f"  Frames per sequence: {n_frames}")
+    
+    # Select sample
+    if sample_idx is None:
+        sample_idx = random.randint(0, len(sequences) - 1)
+    
+    sample_idx = min(sample_idx, len(sequences) - 1)
+    
+    # Get sample data
+    sequence = sequences[sample_idx].numpy()  # Shape: (n_frames, H, W)
+    mask_sequence = mask_sequences[sample_idx].numpy()  # Shape: (n_frames, H, W)
+    label = labels[sample_idx].item()
+    
+    print(f"\nVisualizing sample {sample_idx}:")
+    print(f"  Number of targets: {label}")
+    print(f"  Sequence shape: {sequence.shape}")
+    
+    # Create figure with subplots: 2 rows (RDM, masks) x n_frames columns
+    fig, axes = plt.subplots(2, n_frames)
+    if n_frames == 1:
+        axes = axes.reshape(2, 1)
+    
+    for frame_idx in range(n_frames):
+        rdm = sequence[frame_idx]
+        mask = mask_sequence[frame_idx]
+        
+        # Plot RDM
+        im1 = axes[0, frame_idx].imshow(rdm, aspect='auto', origin='lower', cmap='viridis')
+        axes[0, frame_idx].set_title(f'Frame {frame_idx + 1}\nRDM ({label} targets)')
+        axes[0, frame_idx].set_xlabel('Doppler Bin')
+        if frame_idx == 0:
+            axes[0, frame_idx].set_ylabel('Range Bin')
+        
+        # Plot mask
+        im2 = axes[1, frame_idx].imshow(mask, aspect='auto', origin='lower', cmap='Reds', vmin=0, vmax=1)
+        axes[1, frame_idx].set_title(f'Frame {frame_idx + 1}\nTarget Mask')
+        axes[1, frame_idx].set_xlabel('Doppler Bin')
+        if frame_idx == 0:
+            axes[1, frame_idx].set_ylabel('Range Bin')
+    
+    plt.tight_layout()
+    plt.show()
+    
+    return sample_idx, sequence, mask_sequence, label
+
+def visualize_sample(dataset_path: str, sample_idx: int = None):
+    """
+    Visualize a sample - automatically detects if sequence or single frame data.
+    """
+    dataset = torch.load(dataset_path)
+    
+    if 'sequences' in dataset:
+        return visualize_sequence_sample(dataset_path, sample_idx)
+    else:
+        # Use original single-frame visualization
+        return visualize_single_frame_sample(dataset_path, sample_idx)
+
+def visualize_single_frame_sample(dataset_path: str, sample_idx: int = None):
+    """Original single-frame visualization function."""
     # Load dataset
     print(f"Loading dataset from: {dataset_path}")
     dataset = torch.load(dataset_path)
@@ -310,7 +421,7 @@ def visualize_sample(dataset_path: str, sample_idx: int = None, figsize: tuple =
     print(f"  Image min/max: {image.min():.2f} / {image.max():.2f}")
     
     # Create figure with subplots
-    fig, axes = plt.subplots(1, 3, figsize=figsize)
+    fig, axes = plt.subplots(1, 3)
     
     # Plot 1: Original Range-Doppler Map
     im1 = axes[0].imshow(image, aspect='auto', origin='lower', cmap='viridis')
@@ -327,17 +438,9 @@ def visualize_sample(dataset_path: str, sample_idx: int = None, figsize: tuple =
     plt.colorbar(im2, ax=axes[1], label='Target Presence')
     
     # Plot 3: Overlay (RDM with target highlights)
-    # Create overlay by combining RDM and mask
-    overlay_image = image.copy()
-    
-    # Create custom colormap for overlay
-    # Use the viridis colormap for the background and red for targets
     axes[2].imshow(image, aspect='auto', origin='lower', cmap='viridis', alpha=0.8)
-    
-    # Overlay targets in red
     target_overlay = np.ma.masked_where(mask == 0, mask)
     axes[2].imshow(target_overlay, aspect='auto', origin='lower', cmap='Reds', alpha=0.7, vmin=0, vmax=1)
-    
     axes[2].set_title('RDM with Target Overlay\n(Red = Targets)')
     axes[2].set_xlabel('Doppler Bin')
     axes[2].set_ylabel('Range Bin')
@@ -350,28 +453,27 @@ def visualize_sample(dataset_path: str, sample_idx: int = None, figsize: tuple =
 # Example usage and testing
 if __name__ == "__main__":
     
-    visualize_sample("data/sea_clutter_segmentation_lowSCR.pt", sample_idx=3000)
-
-    # Example 1: Create individual dataset
-    dataset_path = "data/sea_clutter_segmentation_lowSCR.pt"
+    # Test with sequence data
+    dataset_path = "data/sea_clutter_segmentation_sequences.pt"
     
-    print("=== Testing Dataset Class ===")
-    dataset = RadarSegmentationDataset(dataset_path, split='train')
+    print("=== Testing Sequence Dataset Class ===")
+    dataset = RadarSegmentationDataset(dataset_path, split='train', mask_strategy='middle')
     
     # Test getting a sample
-    image, mask = dataset[0]
+    image, mask = dataset[3000]
     print(f"Sample shape - Image: {image.shape}, Mask: {mask.shape}")
     
     # Get dataset statistics
     stats = dataset.get_dataset_stats()
     print(f"Dataset stats: {stats}")
     
-    # Example 2: Create data loaders
+    # Test data loaders
     print("\n=== Creating Data Loaders ===")
     train_loader, val_loader, test_loader = create_data_loaders(
         dataset_path=dataset_path,
-        batch_size=8,
-        num_workers=2
+        batch_size=16,
+        num_workers=0,
+        mask_strategy='last'
     )
     
     # Test batch loading
@@ -383,3 +485,7 @@ if __name__ == "__main__":
         print(f"  Target pixel ratio: {masks.mean():.4f}")
         if batch_idx == 2:  # Only show first few batches
             break
+    
+    # Visualize a sequence sample
+    print("\n=== Visualizing Sequence Sample ===")
+    visualize_sample(dataset_path, sample_idx=3000)

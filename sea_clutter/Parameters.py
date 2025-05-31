@@ -34,7 +34,7 @@ class Target:
 
 @dataclass
 class SequenceParams:
-    n_frames: int = 1             # Frames to simulate
+    n_frames: int = 3             # Frames to simulate
     frame_rate_hz: float = 2      # Frames per second
 
 class TargetType(Enum):
@@ -222,7 +222,7 @@ def create_realistic_target(target_type: TargetType, initial_range_idx: int, rp:
     
     elif target_type == TargetType.FIXED:
         # Default case
-        base_velocity = np.random.uniform(-30, 30)
+        base_velocity = np.random.uniform(-20, 20)
         return RealisticTarget(
             rng_idx=initial_range_idx,
             doppler_hz=2.0 * base_velocity / rp.carrier_wavelength,

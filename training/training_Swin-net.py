@@ -4,8 +4,7 @@ from typing import Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import confusion_matrix, precision_score, recall_score
-import time
-import logging
+
 
 from load_segmentation_data import create_data_loaders
 from Swin_Net import SwinUNET, CombinedLoss
@@ -32,7 +31,7 @@ def evaluate(model, loader, device) -> Tuple[float, float, float]:
     n = len(loader)
     return dice_total / n, prec_total / n, recall_total / n
 
-def train_swin_unet(dataset_path: str, num_epochs=50, batch_size=8, lr=1e-4, model_save_path='swin_unet_sea_clutter.pt'):
+def train_swin_unet(dataset_path: str, num_epochs=50, batch_size=8, lr=1e-4, model_save_path='Swin_Net.pt'):
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     print(f"Using device: {device}")
 
@@ -54,14 +53,14 @@ def train_swin_unet(dataset_path: str, num_epochs=50, batch_size=8, lr=1e-4, mod
     # Create model adapted for radar data
     model = SwinUNET(
         img_size=max(img_height, img_width),  # Use the larger dimension
-        patch_size=4,
+        patch_size=8,  # Fixed: Use 4 for 128x128 images
         in_chans=in_channels,  # Use actual number of input channels
         num_classes=1,
         embed_dim=96,
         depths=[2, 2, 6, 2],  # Deeper middle layers for complex patterns
         depths_decoder=[2, 2, 2, 1],
         num_heads=[3, 6, 12, 24],
-        window_size=7,  # Smaller windows for radar patterns
+        window_size=4,  # Increased window size
         drop_path_rate=0.2,
         final_upsample="expand_first"
     ).to(device)
@@ -70,8 +69,8 @@ def train_swin_unet(dataset_path: str, num_epochs=50, batch_size=8, lr=1e-4, mod
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f'Swin-UNET: {trainable_params:,} trainable parameters')
 
-    # Use combined loss (BCE + Dice)
-    criterion = CombinedLoss(bce_weight=0.5, dice_weight=0.5)
+    # Use standard BCE loss to avoid size mismatch issues
+    criterion = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
 
@@ -88,9 +87,30 @@ def train_swin_unet(dataset_path: str, num_epochs=50, batch_size=8, lr=1e-4, mod
 
         for i, (images, masks) in enumerate(train_loader):
             images, masks = images.to(device), masks.to(device)
+            
+            # Debug: Print shapes on first iteration
+            if epoch == 0 and i == 0:
+                print(f"Input images shape: {images.shape}")
+                print(f"Target masks shape: {masks.shape}")
 
             optimizer.zero_grad()
             outputs = model(images)
+            
+            # Debug: Print output shape on first iteration
+            if epoch == 0 and i == 0:
+                print(f"Model output shape: {outputs.shape}")
+            
+            # Fix: Ensure output matches target size
+            if outputs.shape != masks.shape:
+                outputs = torch.nn.functional.interpolate(
+                    outputs, 
+                    size=masks.shape[-2:], 
+                    mode='bilinear', 
+                    align_corners=False
+                )
+                if epoch == 0 and i == 0:
+                    print(f"Resized output shape: {outputs.shape}")
+            
             loss = criterion(outputs, masks)
             loss.backward()
             optimizer.step()
@@ -124,9 +144,8 @@ def train_swin_unet(dataset_path: str, num_epochs=50, batch_size=8, lr=1e-4, mod
     return model
 
 if __name__ == "__main__":
-    sea_state = 'roll'
-    dataset_file = f"/Users/pepijnlens/Documents/transformers/data/sea_clutter_segmentation_roll_RCS.pt"
-    model_file = f"models/swin_unet_{sea_state}_state.pt"
+    dataset_file = f"data/sea_clutter_segmentation_5_state.pt"
+    model_file = f"Swin_Net.pt"
     
     # Train the model
     print("=" * 60)
@@ -136,7 +155,7 @@ if __name__ == "__main__":
     model = train_swin_unet(
         dataset_path=dataset_file,
         num_epochs=50,
-        batch_size=8,  # Smaller batch size due to model complexity
+        batch_size=32,  # Smaller batch size due to model complexity
         lr=1e-4,
         model_save_path=model_file
     )
