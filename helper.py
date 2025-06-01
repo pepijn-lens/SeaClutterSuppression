@@ -3,8 +3,7 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 import pandas as pd 
-from new_swin import radar_swin_t
-from Classification import RadarDataset
+
 
 c0 = 299792458
 

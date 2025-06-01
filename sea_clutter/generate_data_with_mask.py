@@ -346,12 +346,11 @@ if __name__ == "__main__":
     #         save_path=f'data/sea_clutter_segmentation_{sea_state}_state.pt'
     #     )
     generate_segmentation_dataset(
-        samples_per_class=2000,
+        samples_per_class=1000,
         max_targets=10,
         sea_state=5,
         save_path='data/sea_clutter_segmentation_roll_RCS.pt'
     )
-
 
 
     # # Path to your dataset

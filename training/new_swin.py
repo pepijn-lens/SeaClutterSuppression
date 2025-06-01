@@ -321,7 +321,7 @@ class SwinTransformer(nn.Module):
         hidden_dim,
         layers,
         heads,
-        channels=3,
+        channels=1,
         num_classes=1000,
         head_dim=32,
         window_size=7,

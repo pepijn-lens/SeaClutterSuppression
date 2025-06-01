@@ -90,7 +90,7 @@ class PulsedRadar:
 
         for target_idx in range(len(r_list)):
             if self.rcs_variation:
-                RCS_target = np.random.uniform(0.25, 1)  # m^2
+                RCS_target = 0.25 #np.random.uniform(0.1, 1)  # m^2
                 Power = self.Pspec / self.pulse_compression_gain * RCS_target
             else:
                 Power = self.Pspec / self.pulse_compression_gain
@@ -172,7 +172,7 @@ def generate_single_burst(device, num_targets, shape=(64, 512), max_position=[50
     imag = rd_map.imag
 
     magnitude = 20 * torch.log10(torch.sqrt(real**2 + imag**2) + 1e-10)
-    magnitude = (magnitude - magnitude.mean()) / magnitude.std()
+    # magnitude = (magnitude - magnitude.mean()) / magnitude.std()
 
     return magnitude.unsqueeze(0), num_targets, torch.tensor(r_list), torch.tensor(v_list)  # image: (1, 64, 512), ranges: (num_targets), velocities: (num_targets)
 
@@ -224,10 +224,17 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Generate dataset
-    n_targets = 6
-    bursts_per_class = 5000
-    create_dataset_parallel(n_targets, bursts_per_class, save_path='data/20dB_RCS.pt', device=device, num_workers=10)
+    burst = generate_single_burst(device=device, num_targets=10, shape=(64, 512), max_position=[500, 27.5])
+
+    plt.figure()
+    plt.imshow(burst[0].squeeze().cpu().numpy(), aspect='auto')
+    plt.show()
+
+
+    # # Generate dataset
+    # n_targets = 6
+    # bursts_per_class = 5000
+    # create_dataset_parallel(n_targets, bursts_per_class, save_path='data/20dB_RCS.pt', device=device, num_workers=10)
 
 
 

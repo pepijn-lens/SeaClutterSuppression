@@ -140,15 +140,12 @@ class RadarSegmentationDataset(Dataset):
             idx: Sample index
             
         Returns:
-            Tuple of (sequence_as_channels, target_mask) tensors
+            Tuple of (image, target_mask) tensors
         """
         
         # Get sequence and mask sequence
         sequence = self.sequences[idx].clone()  # Shape: (n_frames, H, W)
         mask_sequence = self.mask_sequences[idx].clone()  # Shape: (n_frames, H, W)
-        
-        # Use sequence frames as channels: (n_frames, H, W) -> this becomes (C, H, W) for U-Net
-        image = sequence  # Shape: (3, H, W) for 3 frames
         
         # Handle mask based on strategy
         if self.mask_strategy == 'middle':
@@ -162,9 +159,17 @@ class RadarSegmentationDataset(Dataset):
             # Aggregate all masks (logical OR)
             mask = torch.clamp(mask_sequence.sum(dim=0), 0, 1)  # Shape: (H, W)
         
-        # Add channel dimension to mask for U-Net
-        mask = mask.unsqueeze(0)  # Shape: (1, H, W)
-
+        # For sequence data, use all frames as channels
+        if self.is_sequence:
+            # Use all frames as channels: (n_frames, H, W) = (3, H, W)
+            image = sequence  # Shape: (3, H, W) for 3-frame sequences
+        else:
+            # Single frame data, add channel dimension
+            image = sequence[0].unsqueeze(0)  # Shape: (1, H, W) - single channel
+        
+        # Keep mask as single channel without extra dimension
+        # mask stays as (H, W) - U-Net expects this for binary segmentation
+        
         return image, mask
     
     def get_sample_with_info(self, idx: int) -> Dict[str, Any]:

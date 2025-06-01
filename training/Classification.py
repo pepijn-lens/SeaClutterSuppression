@@ -1,4 +1,4 @@
-from new_swin import radar_swin_t
+from new_swin import radar_swin_t, swin_t
 import os
 import torch
 from torch.utils.data import Dataset, random_split, DataLoader
@@ -13,20 +13,41 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 class RadarDataset(Dataset):
     def __init__(self, data_path):
         self.data_path = data_path
-        self.dataset = torch.load(data_path, weights_only=False)
+        loaded_data = torch.load(data_path, weights_only=False)
         
-        # Access the dictionary structure for sequences
-        if 'sequences' in self.dataset:
-            # New sequence dataset
-            self.data_tensor = self.dataset['sequences']
-            self.is_sequence = True
+        # Check if it's a dictionary with keys or a TensorDataset
+        if isinstance(loaded_data, dict):
+            # Dictionary format with 'sequences'/'images', 'labels', 'metadata'
+            if 'sequences' in loaded_data:
+                # New sequence dataset
+                self.data_tensor = loaded_data['sequences']
+                self.is_sequence = True
+            else:
+                # Old single image dataset
+                self.data_tensor = loaded_data['images']  
+                self.is_sequence = False
+                
+            self.label_tensor = loaded_data['labels']
+            self.metadata = loaded_data.get('metadata', {})
         else:
-            # Old single image dataset
-            self.data_tensor = self.dataset['images']  
-            self.is_sequence = False
+            # Assume it's a TensorDataset or similar structure
+            # Extract tensors from the dataset
+            if hasattr(loaded_data, 'tensors'):
+                self.data_tensor = loaded_data.tensors[0]  # First tensor is data
+                self.label_tensor = loaded_data.tensors[1]  # Second tensor is labels
+            else:
+                # If it's just tensors directly
+                self.data_tensor = loaded_data[0]
+                self.label_tensor = loaded_data[1]
             
-        self.label_tensor = self.dataset['labels']
-        self.metadata = self.dataset['metadata']
+            # Determine if it's sequence data based on tensor shape
+            # Assuming sequences have shape (N, T, H, W) where T > 1
+            if len(self.data_tensor.shape) == 4 and self.data_tensor.shape[1] > 1:
+                self.is_sequence = True
+            else:
+                self.is_sequence = False
+            
+            self.metadata = {}
 
     def __len__(self):
         return len(self.data_tensor)
@@ -41,7 +62,7 @@ class RadarDataset(Dataset):
             return sequence, label
         else:
             # For single images: add channel dimension (1, height, width)
-            image = self.data_tensor[idx].unsqueeze(0)
+            image = self.data_tensor[idx]
             label = self.label_tensor[idx]
             return image, label
     
@@ -143,21 +164,6 @@ def train(model, train_loader, val_loader, criterion, optimizer, device, num_epo
                 print(f"🛑 Early stopping triggered after {patience} epochs without improvement.")
                 print(f"🔁 Best model was from epoch {best_epoch} with Val Acc: {best_val_acc:.2f}%")
                 break
-
-    # Plot and save training/validation loss
-    os.makedirs(f"training_loss/{save_path[:-3]}", exist_ok=True)
-    plt.figure(figsize=(8, 5))
-    plt.plot(range(1, len(train_losses) + 1), train_losses, label="Train Loss")
-    plt.plot(range(1, len(val_losses) + 1), val_losses, label="Validation Loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.title("Training and Validation Loss")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(f"training_loss/{save_path[:-3]}/training_loss.png")
-    plt.close()
-    print("📈 Saved training loss plot to training_loss.png")
 
 
 def evaluate(model, test_loader, device):
@@ -309,8 +315,8 @@ if __name__ == "__main__":
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
     # model_name = "8patch-medium.pt"
-    model_name = "multiframe_sea_monster-3channels.pt"
-    dataset_pt = "data/sea_clutter-4_frames-25SCR.pt"
+    model_name = "optuna_trial_6-20dBtraining.pt"
+    dataset_pt = "data/20dB.pt"
     
     # study = optuna.create_study(direction="maximize")
     # study.optimize(lambda trial: objective(trial, dataset_pt), n_trials=20)
@@ -318,16 +324,17 @@ if __name__ == "__main__":
     # logger.info(f"Best trial: {study.best_trial.number}")
     # logger.info(f"Best value: {study.best_trial.value}")
     # logger.info(f"Best params: {study.best_trial.params}")
-    
+
+    # 2025-05-23 12:36:49,838 [INFO] Trial 6: layers=6, window_size=(2, 8), patch_size=8, heads=4, head_dim=32, weight decay=0.001176332551865265, dataset=data/30dB.pt
+
     model = radar_swin_t(
-        in_channels=3,  # Changed from 1 to 4 for the 4 frames
         num_classes=6,
-        hidden_dim=96,
-        window_size=(2, 8),
-        layers=4,
-        heads=3,
-        head_dim=32,
-        patch_size=4
+        hidden_dim=128,  # 2 * (patch_size ** 2) * 4
+        window_size=(2, 8),  # (2, 8) for 4 frames
+        layers=6,
+        heads=4,  # (3, 6, 12, 24) for 4 layers
+        head_dim=32,  # hidden_dim // heads
+        patch_size=8,  # 8 for 4 frames
     ).to(device)
 
     # print(model)
@@ -336,7 +343,7 @@ if __name__ == "__main__":
 
     model.load_state_dict(torch.load(f'models/{model_name}'))  # Load pre-trained model if available
 
-    train_loader, val_loader, test_loader = load_dataloaders(batch_size=64, root_dir=dataset_pt, random_seed=8)
+    train_loader, val_loader, test_loader = load_dataloaders(batch_size=64, root_dir=dataset_pt, random_seed=6)
 
     # criterion = torch.nn.CrossEntropyLoss()
     # optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4, weight_decay=0.002)

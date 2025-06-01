@@ -209,15 +209,15 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="Generate sea clutter sequence segmentation dataset")
-    parser.add_argument("--samples", type=int, default=2000, 
+    parser.add_argument("--samples", type=int, default=1000, 
                         help="Number of samples per class (default: 2000)")
     parser.add_argument("--max-targets", type=int, default=10,
                         help="Maximum number of targets (default: 5)")
     parser.add_argument("--sea-state", type=int, choices=[1,3,5,7,9], default=5,
                         help="WMO sea state (default: 5)")
-    parser.add_argument("--frames", type=int, default=3,
+    parser.add_argument("--frames", type=int, default=5,
                         help="Number of frames per sequence (default: 3)")
-    parser.add_argument("--output", type=str, default="data/sea_clutter_segmentation_sequences.pt",
+    parser.add_argument("--output", type=str, default="data/sea_clutter_segmentation_5sequences.pt",
                         help="Output file path (default: data/sea_clutter_segmentation_3_frames.pt)")
 
     args = parser.parse_args()

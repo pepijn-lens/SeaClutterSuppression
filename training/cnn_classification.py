@@ -7,23 +7,20 @@ import matplotlib.pyplot as plt
 import os
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
-class RadarCNN(nn.Module):
-    def __init__(self, in_channels=1, num_classes=6, dropout_rate=0.3):
-        super(RadarCNN, self).__init__()
+# Alternative version if you need more capacity but still want efficiency
+class RadarCNNMedium(nn.Module):
+    def __init__(self, in_channels=1, num_classes=10, dropout_rate=0.5):
+        super(RadarCNNMedium, self).__init__()
         
-        # Convolutional layers with different kernel sizes for multi-scale features
-        self.conv1 = nn.Conv2d(in_channels, 32, kernel_size=5, padding=2)  # Larger kernel for initial features
+        # Convolutional layers
+        self.conv1 = nn.Conv2d(in_channels, 32, kernel_size=5, padding=2)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
         self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
-        self.conv4 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
-        self.conv5 = nn.Conv2d(256, 512, kernel_size=3, padding=1)  # Additional layer for deeper features
         
         # Batch normalization layers
         self.bn1 = nn.BatchNorm2d(32)
         self.bn2 = nn.BatchNorm2d(64)
         self.bn3 = nn.BatchNorm2d(128)
-        self.bn4 = nn.BatchNorm2d(256)
-        self.bn5 = nn.BatchNorm2d(512)
         
         # Pooling layer
         self.pool = nn.MaxPool2d(2, 2)
@@ -31,31 +28,27 @@ class RadarCNN(nn.Module):
         # Dropout layer
         self.dropout = nn.Dropout(dropout_rate)
         
-        # Adaptive pooling to handle variable input sizes
-        self.adaptive_pool = nn.AdaptiveAvgPool2d((4, 4))
+        # Smaller adaptive pooling
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((2, 2))
         
-        # Fully connected layers
-        self.fc1 = nn.Linear(512 * 4 * 4, 1024)
-        self.fc2 = nn.Linear(1024, 256)
-        self.fc3 = nn.Linear(256, num_classes)
+        # Reasonably sized fully connected layers
+        self.fc1 = nn.Linear(128 * 2 * 2, 256)
+        self.fc2 = nn.Linear(256, 64)
+        self.fc3 = nn.Linear(64, num_classes)
         
     def forward(self, x):
-        # Conv blocks with residual-like connections for better gradient flow
-        x = self.pool(F.relu(self.bn1(self.conv1(x))))
-        x = self.pool(F.relu(self.bn2(self.conv2(x))))
-        x = self.pool(F.relu(self.bn3(self.conv3(x))))
-        x = self.pool(F.relu(self.bn4(self.conv4(x))))
-        x = self.pool(F.relu(self.bn5(self.conv5(x))))
+        # Convolutional layers with batch norm and pooling
+        x = self.pool(torch.relu(self.bn1(self.conv1(x))))
+        x = self.pool(torch.relu(self.bn2(self.conv2(x))))
+        x = self.pool(torch.relu(self.bn3(self.conv3(x))))
         
-        # Adaptive pooling for consistent output size
+        # Adaptive pooling and flatten
         x = self.adaptive_pool(x)
-        x = x.view(x.size(0), -1)
+        x = torch.flatten(x, 1)
         
-        # Fully connected layers with stronger regularization
-        x = F.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = F.relu(self.fc2(x))
-        x = self.dropout(x)
+        # Fully connected layers
+        x = self.dropout(torch.relu(self.fc1(x)))
+        x = self.dropout(torch.relu(self.fc2(x)))
         x = self.fc3(x)
         
         return x
@@ -211,12 +204,12 @@ if __name__ == "__main__":
     
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     
-    model_name = "CNN-sea_monster-1dB.pt"
-    dataset_pt = "data/sea_clutter_classification_SCR1.pt"
+    model_name = "CNN-no_clutter-20dB.pt"
+    dataset_pt = "data/20dB.pt"
     
     # Initialize CNN model with radar-optimized parameters
-    model = RadarCNN(in_channels=1, num_classes=6, dropout_rate=0.5).to(device)
-    model.load_state_dict(torch.load(f'models/{model_name}'))
+    model = RadarCNNMedium(in_channels=1, num_classes=6, dropout_rate=0.5).to(device)
+    model.load_state_dict(torch.load('models/CNN-no_clutter-20dB.pt', map_location=device))
     
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f'CNN: {trainable_params:,} trainable parameters')
@@ -224,19 +217,19 @@ if __name__ == "__main__":
     # Load data
     train_loader, val_loader, test_loader = load_dataloaders(batch_size=32, root_dir=dataset_pt, random_seed=6)
     
-    # # Training setup optimized for radar data
-    # criterion = torch.nn.CrossEntropyLoss()  # Label smoothing for noisy radar data
-    # optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4, weight_decay=0.005)
+    # Training setup optimized for radar data
+    criterion = torch.nn.CrossEntropyLoss()  
+    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-4)
     
-    # total_steps = 100 * len(train_loader)
-    # warmup_steps = int(0.1 * total_steps)
+    total_steps = 100 * len(train_loader)
+    warmup_steps = int(0.1 * total_steps)
     
-    # scheduler = get_cosine_schedule_with_warmup(
-    #     optimizer, warmup_steps=warmup_steps, total_steps=total_steps, min_lr_ratio=0.01
-    # )
+    scheduler = get_cosine_schedule_with_warmup(
+        optimizer, warmup_steps=warmup_steps, total_steps=total_steps, min_lr_ratio=0.01
+    )
     
-    # # Train the model
-    # train_cnn(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=100, save_path=model_name, scheduler=scheduler)
+    # Train the model
+    train_cnn(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=100, save_path=model_name, scheduler=scheduler)
     
     # Evaluate the model
     accuracy = evaluate_cnn(model, test_loader, device)
