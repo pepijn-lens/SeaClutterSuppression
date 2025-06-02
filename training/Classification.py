@@ -71,7 +71,7 @@ class RadarDataset(Dataset):
         return self.metadata
     
     
-def load_dataloaders(root_dir="swin_bursts", batch_size=16, num_workers=0,random_seed=42):
+def load_dataloaders(root_dir="data/20dB", batch_size=32, num_workers=0,random_seed=42):
     dataset = RadarDataset(data_path=root_dir)
 
     total_len = len(dataset)
@@ -315,7 +315,7 @@ if __name__ == "__main__":
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
     # model_name = "8patch-medium.pt"
-    model_name = "optuna_trial_6-20dBtraining.pt"
+    model_name = "swin_no_clutter.pt"
     dataset_pt = "data/20dB.pt"
     
     # study = optuna.create_study(direction="maximize")
@@ -324,8 +324,6 @@ if __name__ == "__main__":
     # logger.info(f"Best trial: {study.best_trial.number}")
     # logger.info(f"Best value: {study.best_trial.value}")
     # logger.info(f"Best params: {study.best_trial.params}")
-
-    # 2025-05-23 12:36:49,838 [INFO] Trial 6: layers=6, window_size=(2, 8), patch_size=8, heads=4, head_dim=32, weight decay=0.001176332551865265, dataset=data/30dB.pt
 
     model = radar_swin_t(
         num_classes=6,

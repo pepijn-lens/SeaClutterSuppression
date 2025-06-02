@@ -28,7 +28,7 @@ import random
 import numpy as np
 
 from sea_helper import animate_sequence, update_realistic_target_velocity
-from Parameters import RadarParams, ClutterParams, SequenceParams, Target, RealisticTarget, TargetType, get_clutter_params_for_sea_state, create_realistic_target
+from parameters import RadarParams, ClutterParams, SequenceParams, Target, RealisticTarget, TargetType, get_clutter_params_for_sea_state, create_realistic_target
 from physics import add_target_blob, compute_range_doppler, simulate_sea_clutter
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ def simulate_sequence_with_realistic_targets(
     cp: ClutterParams,
     sp: SequenceParams,
     targets: List[RealisticTarget],
-    random_roll: bool = True
+    random_roll: bool = False
 ) -> list[np.ndarray]:  # Return only RDMs
     """Simulate sequence with multiple realistic targets."""
     dt = 1.0 / sp.frame_rate_hz
@@ -105,7 +105,7 @@ def simulate_example_with_multiple_targets(save_gif: bool = False, cp = ClutterP
     #     create_realistic_target(TargetType.SPEEDBOAT, random.randint(0, max_range), rp),
     # ]
     
-    targets = [create_realistic_target(TargetType.FIXED, random.randint(min_range, max_range), rp) for _ in range(100)]
+    targets = [create_realistic_target(TargetType.FIXED, random.randint(min_range, max_range), rp) for _ in range(10)]
 
     # Print target information
     print("Simulating targets:")
@@ -113,7 +113,7 @@ def simulate_example_with_multiple_targets(save_gif: bool = False, cp = ClutterP
         print(f"  {i+1}. {tgt.target_type.value}: Range {tgt.rng_idx*rp.range_resolution:.0f}m, "
               f"Initial velocity {tgt.current_velocity_mps:.1f} m/s")
     
-    rdm_list = simulate_sequence_with_realistic_targets(rp, cp, sp, targets, random_roll=True)
+    rdm_list = simulate_sequence_with_realistic_targets(rp, cp, sp, targets, random_roll=False)
     save_path = "sea_clutter_realistic_targets.gif" if save_gif else None
     interval_ms = int(1000.0 / sp.frame_rate_hz)
     animate_sequence(rdm_list, rp, interval_ms=interval_ms, save_path=save_path)

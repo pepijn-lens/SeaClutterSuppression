@@ -1,10 +1,8 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
-from typing import Optional, Tuple, Dict, Any
+from typing import Tuple, Dict, Any
 from sklearn.model_selection import train_test_split
-import matplotlib.pyplot as plt
-import random
 
 class RadarSegmentationDataset(Dataset):
     """
@@ -72,10 +70,6 @@ class RadarSegmentationDataset(Dataset):
         # Store original statistics for potential denormalization
         self.original_mean = self.sequences.mean().item()
         self.original_std = self.sequences.std().item()
-        
-        print(f"Loaded dataset with {len(self.sequences)} samples")
-        print(f"Sequence shape: {self.sequences.shape}")
-        print(f"Mask sequence shape: {self.mask_sequences.shape}")
         
         # Create train/val/test splits
         if split != 'all':
@@ -171,49 +165,6 @@ class RadarSegmentationDataset(Dataset):
         # mask stays as (H, W) - U-Net expects this for binary segmentation
         
         return image, mask
-    
-    def get_sample_with_info(self, idx: int) -> Dict[str, Any]:
-        """
-        Get a sample with additional information.
-        
-        Args:
-            idx: Sample index
-            
-        Returns:
-            Dictionary containing image, mask, label, and metadata
-        """
-        
-        image, mask = self.__getitem__(idx)
-        
-        return {
-            'image': image,
-            'mask': mask,
-            'sequence': self.sequences[idx],  # Full sequence
-            'mask_sequence': self.mask_sequences[idx],  # Full mask sequence
-            'n_targets': self.labels[idx].item(),
-            'idx': idx,
-            'split': self.split,
-            'n_frames': self.n_frames,
-            'mask_strategy': self.mask_strategy
-        }
-    
-    def get_class_distribution(self) -> Dict[int, int]:
-        """Get the distribution of target counts in the current split."""
-        unique_labels, counts = torch.unique(self.labels, return_counts=True)
-        return {label.item(): count.item() for label, count in zip(unique_labels, counts)}
-    
-    def get_dataset_stats(self) -> Dict[str, float]:
-        """Get statistics about the dataset."""
-        return {
-            'sequence_mean': self.sequences.mean().item(),
-            'sequence_std': self.sequences.std().item(),
-            'sequence_min': self.sequences.min().item(),
-            'sequence_max': self.sequences.max().item(),
-            'mask_mean': self.mask_sequences.mean().item(),  # Fraction of target pixels
-            'total_target_pixels': self.mask_sequences.sum().item(),
-            'n_frames': self.n_frames,
-        }
-
 
 def create_data_loaders(
     dataset_path: str,
@@ -308,189 +259,3 @@ def create_data_loaders(
     
     return train_loader, val_loader, test_loader
 
-def visualize_sequence_sample(dataset_path: str, sample_idx: int = None):
-    """
-    Visualize a sequence sample from the segmentation dataset.
-    
-    Args:
-        dataset_path: Path to the saved dataset
-        sample_idx: Index of sample to visualize (random if None)
-        figsize: Figure size for the plot
-    """
-    
-    # Load dataset
-    print(f"Loading dataset from: {dataset_path}")
-    dataset = torch.load(dataset_path)
-    
-    # Check if sequence data
-    if 'sequences' in dataset:
-        sequences = dataset['sequences']
-        mask_sequences = dataset['mask_sequences']
-        labels = dataset['labels']
-        metadata = dataset['metadata']
-        n_frames = sequences.shape[1]
-    else:
-        print("This appears to be single-frame data, not sequence data")
-        return
-    
-    print(f"Dataset info:")
-    print(f"  Total samples: {len(sequences)}")
-    print(f"  Sequence shape: {sequences.shape}")
-    print(f"  Frames per sequence: {n_frames}")
-    
-    # Select sample
-    if sample_idx is None:
-        sample_idx = random.randint(0, len(sequences) - 1)
-    
-    sample_idx = min(sample_idx, len(sequences) - 1)
-    
-    # Get sample data
-    sequence = sequences[sample_idx].numpy()  # Shape: (n_frames, H, W)
-    mask_sequence = mask_sequences[sample_idx].numpy()  # Shape: (n_frames, H, W)
-    label = labels[sample_idx].item()
-    
-    print(f"\nVisualizing sample {sample_idx}:")
-    print(f"  Number of targets: {label}")
-    print(f"  Sequence shape: {sequence.shape}")
-    
-    # Create figure with subplots: 2 rows (RDM, masks) x n_frames columns
-    fig, axes = plt.subplots(2, n_frames)
-    if n_frames == 1:
-        axes = axes.reshape(2, 1)
-    
-    for frame_idx in range(n_frames):
-        rdm = sequence[frame_idx]
-        mask = mask_sequence[frame_idx]
-        
-        # Plot RDM
-        im1 = axes[0, frame_idx].imshow(rdm, aspect='auto', origin='lower', cmap='viridis')
-        axes[0, frame_idx].set_title(f'Frame {frame_idx + 1}\nRDM ({label} targets)')
-        axes[0, frame_idx].set_xlabel('Doppler Bin')
-        if frame_idx == 0:
-            axes[0, frame_idx].set_ylabel('Range Bin')
-        
-        # Plot mask
-        im2 = axes[1, frame_idx].imshow(mask, aspect='auto', origin='lower', cmap='Reds', vmin=0, vmax=1)
-        axes[1, frame_idx].set_title(f'Frame {frame_idx + 1}\nTarget Mask')
-        axes[1, frame_idx].set_xlabel('Doppler Bin')
-        if frame_idx == 0:
-            axes[1, frame_idx].set_ylabel('Range Bin')
-    
-    plt.tight_layout()
-    plt.show()
-    
-    return sample_idx, sequence, mask_sequence, label
-
-def visualize_sample(dataset_path: str, sample_idx: int = None):
-    """
-    Visualize a sample - automatically detects if sequence or single frame data.
-    """
-    dataset = torch.load(dataset_path)
-    
-    if 'sequences' in dataset:
-        return visualize_sequence_sample(dataset_path, sample_idx)
-    else:
-        # Use original single-frame visualization
-        return visualize_single_frame_sample(dataset_path, sample_idx)
-
-def visualize_single_frame_sample(dataset_path: str, sample_idx: int = None):
-    """Original single-frame visualization function."""
-    # Load dataset
-    print(f"Loading dataset from: {dataset_path}")
-    dataset = torch.load(dataset_path)
-    
-    images = dataset['images']
-    masks = dataset['masks']
-    labels = dataset['labels']
-    metadata = dataset['metadata']
-    
-    print(f"Dataset info:")
-    print(f"  Total samples: {len(images)}")
-    print(f"  Image shape: {images.shape}")
-    print(f"  Classes: {metadata['class_names']}")
-    
-    # Select sample
-    if sample_idx is None:
-        sample_idx = random.randint(0, len(images) - 1)
-    
-    sample_idx = min(sample_idx, len(images) - 1)
-    
-    # Get sample data
-    image = images[sample_idx].numpy()
-    mask = masks[sample_idx].numpy()
-    label = labels[sample_idx].item()
-    
-    print(f"\nVisualizing sample {sample_idx}:")
-    print(f"  Number of targets: {label}")
-    print(f"  Target pixels: {np.sum(mask)}")
-    print(f"  Image min/max: {image.min():.2f} / {image.max():.2f}")
-    
-    # Create figure with subplots
-    fig, axes = plt.subplots(1, 3)
-    
-    # Plot 1: Original Range-Doppler Map
-    im1 = axes[0].imshow(image, aspect='auto', origin='lower', cmap='viridis')
-    axes[0].set_title(f'Range-Doppler Map\n({label} targets)')
-    axes[0].set_xlabel('Doppler Bin')
-    axes[0].set_ylabel('Range Bin')
-    plt.colorbar(im1, ax=axes[0], label='Normalized dB')
-    
-    # Plot 2: Binary Target Mask
-    im2 = axes[1].imshow(mask, aspect='auto', origin='lower', cmap='Reds', vmin=0, vmax=1)
-    axes[1].set_title('Target Mask\n(Binary)')
-    axes[1].set_xlabel('Doppler Bin')
-    axes[1].set_ylabel('Range Bin')
-    plt.colorbar(im2, ax=axes[1], label='Target Presence')
-    
-    # Plot 3: Overlay (RDM with target highlights)
-    axes[2].imshow(image, aspect='auto', origin='lower', cmap='viridis', alpha=0.8)
-    target_overlay = np.ma.masked_where(mask == 0, mask)
-    axes[2].imshow(target_overlay, aspect='auto', origin='lower', cmap='Reds', alpha=0.7, vmin=0, vmax=1)
-    axes[2].set_title('RDM with Target Overlay\n(Red = Targets)')
-    axes[2].set_xlabel('Doppler Bin')
-    axes[2].set_ylabel('Range Bin')
-    
-    plt.tight_layout()
-    plt.show()
-    
-    return sample_idx, image, mask, label
-
-# Example usage and testing
-if __name__ == "__main__":
-    
-    # Test with sequence data
-    dataset_path = "data/sea_clutter_segmentation_sequences.pt"
-    
-    print("=== Testing Sequence Dataset Class ===")
-    dataset = RadarSegmentationDataset(dataset_path, split='train', mask_strategy='middle')
-    
-    # Test getting a sample
-    image, mask = dataset[3000]
-    print(f"Sample shape - Image: {image.shape}, Mask: {mask.shape}")
-    
-    # Get dataset statistics
-    stats = dataset.get_dataset_stats()
-    print(f"Dataset stats: {stats}")
-    
-    # Test data loaders
-    print("\n=== Creating Data Loaders ===")
-    train_loader, val_loader, test_loader = create_data_loaders(
-        dataset_path=dataset_path,
-        batch_size=16,
-        num_workers=0,
-        mask_strategy='last'
-    )
-    
-    # Test batch loading
-    print("\n=== Testing Batch Loading ===")
-    for batch_idx, (images, masks) in enumerate(train_loader):
-        print(f"Batch {batch_idx}: Images {images.shape}, Masks {masks.shape}")
-        print(f"  Image range: [{images.min():.3f}, {images.max():.3f}]")
-        print(f"  Mask range: [{masks.min():.3f}, {masks.max():.3f}]")
-        print(f"  Target pixel ratio: {masks.mean():.4f}")
-        if batch_idx == 2:  # Only show first few batches
-            break
-    
-    # Visualize a sequence sample
-    print("\n=== Visualizing Sequence Sample ===")
-    visualize_sample(dataset_path, sample_idx=3000)

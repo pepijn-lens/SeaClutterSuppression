@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
-from Parameters import RadarParams, RealisticTarget
+from parameters import RadarParams, RealisticTarget
 from physics import db
 
 

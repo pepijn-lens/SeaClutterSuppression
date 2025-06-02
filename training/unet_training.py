@@ -3,7 +3,7 @@ import torch.nn as nn
 from typing import Tuple
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.metrics import confusion_matrix, classification_report
+from sklearn.metrics import confusion_matrix
 import torch.nn.functional as F
 import time
 import logging
@@ -85,7 +85,7 @@ def evaluate(model, loader, device) -> Tuple[float, float, float]:
 # ---------------------------
 # 3. Training Loop
 # ---------------------------
-def train_model(dataset_path: str, num_epochs=30, batch_size=16, lr=1e-4, pretrained=None, model_save_path='unet_sea_clutter.pt'):
+def train_model(dataset_path: str, num_epochs=30, batch_size=16, lr=1e-4, pretrained=None, model_save_path='unet_single_frame.pt'):
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
 
     train_loader, val_loader, _ = create_data_loaders(
@@ -94,7 +94,7 @@ def train_model(dataset_path: str, num_epochs=30, batch_size=16, lr=1e-4, pretra
         mask_strategy='last',
     )
 
-    model = UNet(n_channels=3).to(device)
+    model = UNet(n_channels=1).to(device)
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f'{trainable_params:,} trainable parameters')
     if pretrained:
@@ -144,423 +144,9 @@ def train_model(dataset_path: str, num_epochs=30, batch_size=16, lr=1e-4, pretra
 
     print(f"Best model saved to {model_save_path} with Dice score: {best_dice:.3f}")
 
-# ---------------------------
-# 4. Interpret Model Results
-# ---------------------------
-def interpret_model_results(model_path: str, dataset_path: str, batch_size=16, num_samples=5, save_plots=None, log_file=None):
-    """
-    Interpret and visualize the results of the trained model.
-    
-    Args:
-        model_path: Path to the saved model
-        dataset_path: Path to the dataset
-        batch_size: Batch size for data loading
-        num_samples: Number of sample predictions to visualize
-        save_plots: Whether to save plots to disk
-        log_file: Path to log file (if None, prints to console)
-    """
-    # Setup logging
-    if log_file:
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file, mode='w'),
-                logging.StreamHandler()  # Also print to console
-            ]
-        )
-        logger = logging.getLogger(__name__)
-        log_func = logger.info
-    else:
-        log_func = print
-    
-    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
-    
-    # Load model
-    model = UNet(n_channels=3).to(device)  # Add n_channels=3 here
-    model.load_state_dict(torch.load(model_path, map_location=device))
-    model.eval()
-    
-    # Load data
-    _, val_loader, test_loader = create_data_loaders(
-        dataset_path=dataset_path,
-        batch_size=batch_size,
-    )
-    
-    # Use test set if available, otherwise validation set
-    eval_loader = test_loader if test_loader.dataset.__len__() > 0 else val_loader
-    
-    log_func("=" * 60)
-    log_func("MODEL INTERPRETATION RESULTS")
-    log_func("=" * 60)
-    
-    # 1. Overall Performance Metrics
-    dice, precision, recall = evaluate(model, eval_loader, device)
-    f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
-    
-    log_func(f"\nOverall Performance on {'Test' if test_loader.dataset.__len__() > 0 else 'Validation'} Set:")
-    log_func(f"Dice Coefficient: {dice:.4f}")
-    log_func(f"Precision: {precision:.4f}")
-    log_func(f"Recall: {recall:.4f}")
-    log_func(f"F1-Score: {f1_score:.4f}")
-    
-    # 2. Detailed per-batch analysis
-    all_predictions = []
-    all_targets = []
-    all_images = []
-    confidence_scores = []
-    
-    with torch.no_grad():
-        for i, (images, masks) in enumerate(eval_loader):
-            images, masks = images.to(device), masks.to(device)
-            outputs = model(images)
-            probabilities = torch.sigmoid(outputs)
-            predictions = (probabilities > 0.5).float()
-            
-            # Store for analysis
-            all_predictions.extend(predictions.cpu().numpy())
-            all_targets.extend(masks.cpu().numpy())
-            all_images.extend(images.cpu().numpy())
-            confidence_scores.extend(probabilities.cpu().numpy())
-            
-            if i >= num_samples - 1:  # Limit samples for visualization
-                break
-    
-    # 3. Confusion Matrix Analysis
-    flat_preds = np.array(all_predictions).flatten()
-    flat_targets = np.array(all_targets).flatten()
-    
-    cm = confusion_matrix(flat_targets, flat_preds)
-    tn, fp, fn, tp = cm.ravel()
-    
-    log_func(f"\nConfusion Matrix Analysis:")
-    log_func(f"True Negatives: {tn}")
-    log_func(f"False Positives: {fp}")
-    log_func(f"False Negatives: {fn}")
-    log_func(f"True Positives: {tp}")
-    log_func(f"Specificity: {tn/(tn+fp):.4f}")
-    log_func(f"IoU (Jaccard): {tp/(tp+fp+fn):.4f}")
-    
-    # 4. Confidence Analysis
-    conf_array = np.array(confidence_scores)
-    log_func(f"\nPrediction Confidence Analysis:")
-    log_func(f"Mean Confidence: {conf_array.mean():.4f}")
-    log_func(f"Std Confidence: {conf_array.std():.4f}")
-    log_func(f"Min Confidence: {conf_array.min():.4f}")
-    log_func(f"Max Confidence: {conf_array.max():.4f}")
-    
-    # 5. Visualizations
-    fig, axes = plt.subplots(num_samples, 4, figsize=(16, 4*num_samples))
-    if num_samples == 1:
-        axes = axes.reshape(1, -1)
-    
-    for i in range(min(num_samples, len(all_images))):
-        # For sequence data, we need to handle the 3-channel input differently
-        # Show the middle frame for visualization
-        if all_images[i].shape[0] == 3:  # 3 frames as channels
-            image = all_images[i][1]  # Use middle frame (index 1)
-        else:
-            image = all_images[i][0]  # Single channel
-            
-        target = all_targets[i][0]
-        prediction = all_predictions[i][0]
-        confidence = confidence_scores[i][0]
-        
-        # Original image (middle frame)
-        axes[i, 0].imshow(image, cmap='viridis', aspect='auto', origin='lower')
-        axes[i, 0].set_title(f'Input Frame {i+1} (Last Frame)')
-        axes[i, 0].axis('off')
-        
-        # Ground truth mask
-        axes[i, 1].imshow(target, cmap='Reds', alpha=0.7, aspect='auto', origin='lower')
-        axes[i, 1].set_title('Ground Truth')
-        axes[i, 1].axis('off')
-        
-        # Prediction
-        axes[i, 2].imshow(prediction, cmap='Blues', alpha=0.7, aspect='auto', origin='lower')
-        axes[i, 2].set_title('Prediction')
-        axes[i, 2].axis('off')
-        
-        # Confidence map
-        im = axes[i, 3].imshow(confidence, cmap='viridis', vmin=0, vmax=1, aspect='auto', origin='lower')
-        axes[i, 3].set_title('Confidence Map')
-        axes[i, 3].axis('off')
-        plt.colorbar(im, ax=axes[i, 3], fraction=0.046, pad=0.04)
-        
-        # Calculate sample-specific metrics
-        sample_dice = dice_coeff(torch.tensor(prediction).unsqueeze(0).unsqueeze(0), 
-                                torch.tensor(target).unsqueeze(0).unsqueeze(0))
-        log_func(f"Sample {i+1} Dice: {sample_dice:.4f}")
-    
-    plt.tight_layout()
-    if save_plots is not None:
-        plt.savefig(save_plots, dpi=300, bbox_inches='tight')
-        log_func(f"\nVisualization saved as {save_plots}")
-    else:
-        plt.show()
-    
-    # 6. Error Analysis
-    log_func(f"\nError Analysis:")
-    errors = np.abs(flat_preds - flat_targets)
-    error_rate = errors.mean()
-    log_func(f"Pixel-wise Error Rate: {error_rate:.4f}")
-    
-    # Find worst performing samples
-    sample_dice_scores = []
-    for i in range(len(all_predictions)):
-        sample_dice = dice_coeff(torch.tensor(all_predictions[i]).unsqueeze(0), 
-                                torch.tensor(all_targets[i]).unsqueeze(0))
-        sample_dice_scores.append(sample_dice)
-    
-    worst_idx = np.argmin(sample_dice_scores)
-    best_idx = np.argmax(sample_dice_scores)
-    
-    log_func(f"Best sample Dice: {sample_dice_scores[best_idx]:.4f} (Sample {best_idx})")
-    log_func(f"Worst sample Dice: {sample_dice_scores[worst_idx]:.4f} (Sample {worst_idx})")
-    
-    return {
-        'dice': dice,
-        'precision': precision,
-        'recall': recall,
-        'f1_score': f1_score,
-        'confusion_matrix': cm,
-        'confidence_stats': {
-            'mean': conf_array.mean(),
-            'std': conf_array.std(),
-            'min': conf_array.min(),
-            'max': conf_array.max()
-        }
-    }
-
-
-def save_worst_samples(model_path: str, dataset_path: str, n_worst: int = 10, 
-                        batch_size: int = 16, save_dir: str = "worst_samples"):
-    """
-    Find and save the worst N samples from the dataset based on Dice coefficient.
-    
-    Args:
-        model_path: Path to the saved model
-        dataset_path: Path to the dataset
-        n_worst: Number of worst samples to save
-        batch_size: Batch size for data loading
-        save_dir: Directory to save the worst samples
-    """
-    import os
-    
-    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
-    
-    # Load model
-    model = UNet(n_channels=3).to(device)
-    model.load_state_dict(torch.load(model_path, map_location=device))
-    model.eval()
-    
-    # Load data
-    _, val_loader, test_loader = create_data_loaders(
-        dataset_path=dataset_path,
-        batch_size=batch_size,
-    )
-    
-    eval_loader = test_loader if test_loader.dataset.__len__() > 0 else val_loader
-    
-    # Create save directory
-    os.makedirs(save_dir, exist_ok=True)
-    
-    print(f"Evaluating all samples to find {n_worst} worst performers...")
-    
-    # Collect all samples with their metrics
-    sample_data = []
-    sample_idx = 0
-    
-    with torch.no_grad():
-        for batch_idx, (images, masks) in enumerate(eval_loader):
-            images, masks = images.to(device), masks.to(device)
-            outputs = model(images)
-            probabilities = torch.sigmoid(outputs)
-            predictions = (probabilities > 0.5).float()
-            
-            # Process each sample in the batch
-            for i in range(images.shape[0]):
-                image = images[i].cpu().numpy()
-                target = masks[i].cpu().numpy()
-                prediction = predictions[i].cpu().numpy()
-                confidence = probabilities[i].cpu().numpy()
-                
-                # Calculate Dice coefficient for this sample
-                sample_dice = dice_coeff(outputs[i:i+1], masks[i:i+1])
-                
-                # Store sample data
-                sample_data.append({
-                    'sample_idx': sample_idx,
-                    'batch_idx': batch_idx,
-                    'within_batch_idx': i,
-                    'dice_score': sample_dice,
-                    'image': image,
-                    'target': target,
-                    'prediction': prediction,
-                    'confidence': confidence
-                })
-                
-                sample_idx += 1
-    
-    # Sort by Dice score (ascending - worst first)
-    sample_data.sort(key=lambda x: x['dice_score'])
-    
-    # Take the worst N samples
-    worst_samples = sample_data[:n_worst]
-    
-    print(f"Found {len(worst_samples)} worst samples. Saving visualizations...")
-    
-    # Create a summary plot with all worst samples
-    fig, axes = plt.subplots(n_worst, 4, figsize=(16, 4*n_worst))
-    if n_worst == 1:
-        axes = axes.reshape(1, -1)
-    
-    # Save individual samples and create summary
-    summary_data = []
-    
-    for i, sample in enumerate(worst_samples):
-        # Extract data
-        if sample['image'].shape[0] == 3:  # 3 frames as channels
-            display_image = sample['image'][1]  # Use middle frame
-        else:
-            display_image = sample['image'][0]
-            
-        target = sample['target'][0]
-        prediction = sample['prediction'][0]
-        confidence = sample['confidence'][0]
-        
-        # Calculate detailed metrics for this sample
-        flat_pred = prediction.flatten()
-        flat_target = target.flatten()
-        tp = np.sum((flat_pred == 1) & (flat_target == 1))
-        fp = np.sum((flat_pred == 1) & (flat_target == 0))
-        fn = np.sum((flat_pred == 0) & (flat_target == 1))
-        tn = np.sum((flat_pred == 0) & (flat_target == 0))
-        
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
-        
-        # Store summary data
-        summary_data.append({
-            'rank': i + 1,
-            'sample_idx': sample['sample_idx'],
-            'dice_score': sample['dice_score'],
-            'precision': precision,
-            'recall': recall,
-            'specificity': specificity,
-            'mean_confidence': confidence.mean(),
-            'std_confidence': confidence.std(),
-            'tp': tp, 'fp': fp, 'fn': fn, 'tn': tn
-        })
-        
-        # Create individual sample plot
-        fig_single, axes_single = plt.subplots(2, 3, figsize=(15, 10))
-        
-        # Original image
-        axes_single[0, 0].imshow(display_image, cmap='viridis', aspect='auto', origin='lower')
-        axes_single[0, 0].set_title(f'Input (Sample {sample["sample_idx"]})')
-        axes_single[0, 0].axis('off')
-        
-        # Ground truth
-        axes_single[0, 1].imshow(target, cmap='Reds', alpha=0.7, aspect='auto', origin='lower')
-        axes_single[0, 1].set_title('Ground Truth')
-        axes_single[0, 1].axis('off')
-        
-        # Prediction
-        axes_single[0, 2].imshow(prediction, cmap='Blues', alpha=0.7, aspect='auto', origin='lower')
-        axes_single[0, 2].set_title('Prediction')
-        axes_single[0, 2].axis('off')
-        
-        # Confidence map
-        im1 = axes_single[1, 0].imshow(confidence, cmap='viridis', vmin=0, vmax=1, aspect='auto', origin='lower')
-        axes_single[1, 0].set_title('Confidence Map')
-        axes_single[1, 0].axis('off')
-        plt.colorbar(im1, ax=axes_single[1, 0], fraction=0.046, pad=0.04)
-        
-        # Overlay: Original + Ground Truth
-        axes_single[1, 1].imshow(display_image, cmap='viridis', aspect='auto', origin='lower')
-        axes_single[1, 1].imshow(target, cmap='Reds', alpha=0.5, aspect='auto', origin='lower')
-        axes_single[1, 1].set_title('Input + Ground Truth')
-        axes_single[1, 1].axis('off')
-        
-        # Overlay: Original + Prediction
-        axes_single[1, 2].imshow(display_image, cmap='viridis', aspect='auto', origin='lower')
-        axes_single[1, 2].imshow(prediction, cmap='Blues', alpha=0.5, aspect='auto', origin='lower')
-        axes_single[1, 2].set_title('Input + Prediction')
-        axes_single[1, 2].axis('off')
-        
-        plt.suptitle(f'Worst Sample #{i+1} (Global Index: {sample["sample_idx"]}) - Dice: {sample["dice_score"]:.4f}', fontsize=16)
-        plt.tight_layout()
-        
-        # Save individual plot
-        individual_path = os.path.join(save_dir, f'worst_sample_{i+1:02d}_idx_{sample["sample_idx"]}.png')
-        plt.savefig(individual_path, dpi=300, bbox_inches='tight')
-        plt.close(fig_single)
-        
-        # Add to summary plot
-        axes[i, 0].imshow(display_image, cmap='viridis', aspect='auto', origin='lower')
-        axes[i, 0].set_title(f'#{i+1}: Sample {sample["sample_idx"]}')
-        axes[i, 0].axis('off')
-        
-        axes[i, 1].imshow(target, cmap='Reds', alpha=0.7, aspect='auto', origin='lower')
-        axes[i, 1].set_title(f'GT (Dice: {sample["dice_score"]:.3f})')
-        axes[i, 1].axis('off')
-        
-        axes[i, 2].imshow(prediction, cmap='Blues', alpha=0.7, aspect='auto', origin='lower')
-        axes[i, 2].set_title(f'Pred (Conf: {confidence.mean():.3f})')
-        axes[i, 2].axis('off')
-        
-        im = axes[i, 3].imshow(confidence, cmap='viridis', vmin=0, vmax=1, aspect='auto', origin='lower')
-        axes[i, 3].set_title('Confidence')
-        axes[i, 3].axis('off')
-        plt.colorbar(im, ax=axes[i, 3], fraction=0.046, pad=0.04)
-    
-    # Save summary plot
-    plt.suptitle(f'Top {n_worst} Worst Performing Samples', fontsize=16)
-    plt.tight_layout()
-    summary_path = os.path.join(save_dir, f'worst_{n_worst}_samples_summary.png')
-    plt.savefig(summary_path, dpi=300, bbox_inches='tight')
-    plt.close(fig)
-    
-    # Save detailed metrics to text file
-    metrics_path = os.path.join(save_dir, f'worst_{n_worst}_samples_metrics.txt')
-    with open(metrics_path, 'w') as f:
-        f.write(f"WORST {n_worst} SAMPLES ANALYSIS\n")
-        f.write("=" * 50 + "\n\n")
-        
-        for data in summary_data:
-            f.write(f"Rank {data['rank']} - Sample {data['sample_idx']}:\n")
-            f.write(f"  Dice Score: {data['dice_score']:.4f}\n")
-            f.write(f"  Precision: {data['precision']:.4f}\n")
-            f.write(f"  Recall: {data['recall']:.4f}\n")
-            f.write(f"  Specificity: {data['specificity']:.4f}\n")
-            f.write(f"  Mean Confidence: {data['mean_confidence']:.4f}\n")
-            f.write(f"  Std Confidence: {data['std_confidence']:.4f}\n")
-            f.write(f"  TP: {data['tp']}, FP: {data['fp']}, FN: {data['fn']}, TN: {data['tn']}\n")
-            f.write("-" * 30 + "\n")
-    
-    print(f"\nWorst samples analysis complete!")
-    print(f"Individual plots saved in: {save_dir}/")
-    print(f"Summary plot: {summary_path}")
-    print(f"Detailed metrics: {metrics_path}")
-    
-    # Print summary to console
-    print(f"\nWorst {n_worst} samples summary:")
-    print("-" * 70)
-    print(f"{'Rank':<4} {'Sample':<8} {'Dice':<6} {'Precision':<9} {'Recall':<6} {'Confidence':<10}")
-    print("-" * 70)
-    for data in summary_data:
-        print(f"{data['rank']:<4} {data['sample_idx']:<8} {data['dice_score']:<6.3f} "
-                f"{data['precision']:<9.3f} {data['recall']:<6.3f} {data['mean_confidence']:<10.3f}")
-    
-    return worst_samples
-
-
-
 
 # ---------------------------
-# 5. Plot Worst Samples - Dice Scores (New)
+# 5. Plot Worst Samples - Dice Scores 
 # ---------------------------
 def plot_worst_samples_dice_scores(model_path: str, dataset_path: str, n_worst: int = 100, 
                                    batch_size: int = 16, save_path: str = None):
@@ -579,7 +165,7 @@ def plot_worst_samples_dice_scores(model_path: str, dataset_path: str, n_worst: 
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
     # Load model
-    model = UNet(n_channels=3).to(device)
+    model = UNet(n_channels=1).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
     
@@ -757,6 +343,7 @@ def comprehensive_model_analysis(model_path: str, dataset_path: str, batch_size:
     plt.ylabel('Frequency')
     plt.title('Distribution of Dice Scores')
     plt.axvline(df['dice'].mean(), color='red', linestyle='--', label=f'Mean: {df["dice"].mean():.3f}')
+    plt.ylim(0, 1900)  # Set y-axis limit to 0-1800
     plt.legend()
     
     # 2. Metric Correlations
@@ -783,6 +370,7 @@ def comprehensive_model_analysis(model_path: str, dataset_path: str, batch_size:
     plt.xlabel('Worst Sample Rank')
     plt.ylabel('Dice Score')
     plt.title('Worst 100 Samples Performance')
+    plt.ylim(0.09, 0.83)  # Set y-axis limit to 0-0.8
     plt.grid(True, alpha=0.3)
     
     # 5. Precision vs Recall
@@ -917,40 +505,18 @@ def comprehensive_model_analysis(model_path: str, dataset_path: str, batch_size:
 
 
 if __name__ == "__main__":
-    dataset_file = f"/Users/pepijnlens/Documents/transformers/data/sea_clutter_segmentation_sequences.pt"
-    model_file = f"models/unet_sequences.pt"
+    dataset_file = f"/Users/pepijnlens/Documents/transformers/data/sea_clutter_single_frame.pt"
+    model_file = f"models/unet_single_frame.pt"
 
-    intrepretation_file = f"interpretation_results_sequences.png"
-    log_file = f"interpretation_results_sequences.log"
+    intrepretation_file = f"interpretation_results_single_frame.png"
+    log_file = f"interpretation_results_single_frame.log"
     
     train_model(dataset_file, num_epochs=50, batch_size=16, pretrained='/Users/pepijnlens/Documents/transformers/models/unet_sequences.pt', lr=1e-4, model_save_path=model_file)
-
-    # Interpret the results
-    print("\n" + "="*60)
-    print("INTERPRETING MODEL RESULTS...")
-    print("="*60)
-    interpret_model_results(model_file, dataset_file, num_samples=5, save_plots=intrepretation_file, log_file=log_file)
     
     # Comprehensive analysis
-    df, stats = comprehensive_model_analysis(model_file, dataset_file, save_dir="model_analysis_5frames")
+    df, stats = comprehensive_model_analysis(model_file, dataset_file, save_dir="model_analysis_roll")
 
-    # # Plot Dice scores for worst 100 samples
-    # plot_worst_samples_dice_scores(model_file, dataset_file, n_worst=100, 
-    #                                save_path="worst_100_samples_dice_plot.png")
+    # Plot Dice scores for worst 100 samples
+    plot_worst_samples_dice_scores(model_file, dataset_file, n_worst=100, 
+                                   save_path="worst_100_samples_dice_plot.png")
     
-
-    # save_worst_samples(model_file, dataset_file, n_worst=100)
-
-    # # Plot specific sample (sample 9)
-    # print("\n" + "="*60)
-    # print("ANALYZING SAMPLE 9...")
-    # print("="*60)
-    # for i in range(10):
-    #     print(f"Analyzing sample {i}...")
-    #     plot_specific_sample(model_file, dataset_file, sample_idx=i+233)
-
-    # plot_specific_sample(model_file, dataset_file, sample_idx=987)
-
-    # ---------------------------
-    # 7. Save Worst Samples (New)
-    # ---------------------------

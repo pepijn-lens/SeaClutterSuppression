@@ -1,7 +1,6 @@
 from tqdm import tqdm
-from Parameters import RadarParams, ClutterParams, SequenceParams, TargetType, get_clutter_params_for_sea_state, create_realistic_target
+from parameters import RadarParams, ClutterParams, SequenceParams, TargetType, get_clutter_params_for_sea_state, create_realistic_target, Target
 from physics import add_target_blob, compute_range_doppler, simulate_sea_clutter
-from Parameters import Target
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -345,25 +344,25 @@ if __name__ == "__main__":
     #         sea_state=sea_state,
     #         save_path=f'data/sea_clutter_segmentation_{sea_state}_state.pt'
     #     )
-    generate_segmentation_dataset(
-        samples_per_class=1000,
-        max_targets=10,
-        sea_state=5,
-        save_path='data/sea_clutter_segmentation_roll_RCS.pt'
-    )
+    # generate_segmentation_dataset(
+    #     samples_per_class=1000,
+    #     max_targets=10,
+    #     sea_state=5,
+    #     save_path='data/sea_clutter_segmentation_roll_RCS.pt'
+    # )
 
 
-    # # Path to your dataset
-    # dataset_path = "data/sea_clutter_segmentation_9_state.pt"
+    # Path to your dataset
+    dataset_path = "data/sea_clutter_segmentation_roll_RCS.pt"
     
-    # # Visualize a random sample
-    # print("=== Single Sample Visualization ===")
-    # visualize_sample(dataset_path)
+    # Visualize a random sample
+    print("=== Single Sample Visualization ===")
+    visualize_sample(dataset_path)
     
-    # # Visualize class distribution
-    # print("\n=== Class Distribution Visualization ===")
-    # visualize_class_distribution(dataset_path)
+    # Visualize class distribution
+    print("\n=== Class Distribution Visualization ===")
+    visualize_class_distribution(dataset_path)
     
     # Interactive mode (uncomment to use)
-    # print("\n=== Interactive Mode ===")
-    # interactive_visualization(dataset_path)
+    print("\n=== Interactive Mode ===")
+    interactive_visualization(dataset_path)
