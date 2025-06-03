@@ -3,7 +3,9 @@ import torch.nn as nn
 import numpy as np
 from sklearn.cluster import DBSCAN
 import cv2
-import matplotlib.pyplot as plt
+
+from end_to_end_helper import plot_performance_analysis, print_performance_report, evaluate_target_count_performance_from_loader, show_dataset_stats, analyze_single_sample
+
 
 # Use your U-Net architecture from unet_training.py
 class DoubleConv(nn.Module):
@@ -57,12 +59,16 @@ class ClusteringModule:
         Extract centroids from binary map using connected components and DBSCAN
         
         Args:
-            binary_map: numpy array of shape (H, W) with values in [0, 1]
+            binary_map: numpy array or torch tensor of shape (H, W) with values in [0, 1]
             threshold: threshold for binarization
             
         Returns:
             centroids: list of (x, y) coordinates
         """
+        # Convert to numpy if it's a tensor
+        if torch.is_tensor(binary_map):
+            binary_map = binary_map.cpu().numpy()
+        
         # Threshold the binary map
         binary = (binary_map > threshold).astype(np.uint8)
         
@@ -109,11 +115,15 @@ class EndToEndTargetDetector(nn.Module):
         super(EndToEndTargetDetector, self).__init__()
         
         # Initialize U-Net with your architecture
-        self.unet = UNet(n_channels=n_channels, n_classes=n_channels)
+        self.unet = UNet(n_channels=n_channels, n_classes=1)  # Changed to n_classes=1 for segmentation
         
         # Load pre-trained weights if provided
         if unet_weights_path:
             self.unet.load_state_dict(torch.load(unet_weights_path, map_location='mps'))
+        
+        # Move model to MPS
+        self.device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+        self.to(self.device)
         
         # Initialize clustering module
         clustering_params = clustering_params or {}
@@ -129,16 +139,20 @@ class EndToEndTargetDetector(nn.Module):
         Returns:
             batch_centroids: list of lists containing (x, y) coordinates for each sample
         """
-        # Get binary segmentation from U-Net
+        # Ensure input is on the correct device
+        if range_doppler_map.device != self.device:
+            range_doppler_map = range_doppler_map.to(self.device)
+        
+        # Get binary segmentation from U-Net (keep on MPS)
         binary_maps = torch.sigmoid(self.unet(range_doppler_map))  # Shape: (B, 1, 128, 128)
         
-        # Convert to numpy and extract centroids for each sample in batch
+        # Only convert to CPU/NumPy for clustering operations
         batch_centroids = []
-        binary_maps_np = binary_maps.detach().to('mps')
         
-        for i in range(binary_maps_np.shape[0]):
-            binary_map = binary_maps_np[i, 0]  # Shape: (128, 128)
-            centroids = self.clustering.extract_centroids(binary_map)
+        for i in range(binary_maps.shape[0]):
+            # Move single sample to CPU for clustering
+            binary_map_cpu = binary_maps[i, 0].cpu().numpy()  # Shape: (128, 128)
+            centroids = self.clustering.extract_centroids(binary_map_cpu)
             batch_centroids.append(centroids)
         
         return batch_centroids
@@ -163,6 +177,9 @@ class EndToEndTargetDetector(nn.Module):
         elif len(range_doppler_map.shape) == 3:
             # Multi-channel, add batch dim
             range_doppler_map = range_doppler_map.unsqueeze(0)
+        
+        # Move to MPS device
+        range_doppler_map = range_doppler_map.to(self.device)
         
         self.eval()
         with torch.no_grad():
@@ -231,267 +248,95 @@ def comprehensive_evaluation():
     
     return results
 
-def count_ground_truth_targets(ground_truth_mask, min_area=3):
+def interactive_sample_explorer():
     """
-    Count the number of targets in ground truth mask using connected components
-    
-    Args:
-        ground_truth_mask: Binary mask with ground truth targets
-        min_area: Minimum area to consider as a valid target
-    
-    Returns:
-        int: Number of ground truth targets
+    Interactive method to explore samples from the dataset using the end-to-end target detector
     """
-    if torch.is_tensor(ground_truth_mask):
-        gt_mask = ground_truth_mask.cpu().numpy()
-    else:
-        gt_mask = ground_truth_mask
+    print("Loading dataset and model...")
     
-    # Binarize the mask
-    gt_binary = (gt_mask > 0.5).astype(np.uint8)
+    # Load dataset
+    dataset_path = "/Users/pepijnlens/Documents/seacluttersuppression/data/sea_clutter_single_frame.pt"
+    from load_segmentation_data import create_data_loaders
     
-    # Find connected components
-    num_labels, labels = cv2.connectedComponents(gt_binary)
+    _, val_loader, test_loader = create_data_loaders(
+        dataset_path=dataset_path,
+        batch_size=1,  # Load one sample at a time
+        mask_strategy='last',
+    )
     
-    # Count components that meet minimum area requirement
-    valid_targets = 0
-    for label in range(1, num_labels):  # Skip background (label 0)
-        component_mask = (labels == label)
-        if np.sum(component_mask) >= min_area:
-            valid_targets += 1
+    # Use test loader for exploration, fallback to validation
+    data_loader = test_loader if len(test_loader.dataset) > 0 else val_loader
+    dataset_name = "test" if len(test_loader.dataset) > 0 else "validation"
+    dataset = data_loader.dataset
     
-    return valid_targets
-
-def print_performance_report(results):
-    """Print a comprehensive performance report"""
-    print("\n" + "="*70)
-    print("END-TO-END TARGET COUNT PERFORMANCE REPORT")
-    print("="*70)
+    print(f"Loaded {dataset_name} dataset with {len(dataset)} samples")
     
-    print(f"Evaluation samples: {results['num_samples']}")
-    print(f"Mean targets (predicted): {results['mean_predicted']:.2f} ± {results['std_predicted']:.2f}")
-    print(f"Mean targets (ground truth): {results['mean_ground_truth']:.2f} ± {results['std_ground_truth']:.2f}")
+    # Load model
+    sample_batch = next(iter(data_loader))
+    sample_image = sample_batch[0][0]
+    n_channels = sample_image.shape[0] if len(sample_image.shape) == 3 else 1
     
-    print(f"\nACCURACY METRICS:")
-    print(f"  Perfect predictions (exact count): {results['perfect_accuracy']:.1%}")
-    print(f"  Within ±1 target: {results['within_1_accuracy']:.1%}")
-    print(f"  Within ±2 targets: {results['within_2_accuracy']:.1%}")
+    model_path = "/Users/pepijnlens/Documents/seacluttersuppression/models/unet_single_frame.pt"
+    model = EndToEndTargetDetector(
+        unet_weights_path=model_path,
+        n_channels=n_channels,
+        clustering_params={
+            'min_area': 3,
+            'eps': 1,
+            'min_samples': 1
+        }
+    )
     
-    print(f"\nERROR METRICS:")
-    print(f"  Mean Absolute Error: {results['mean_absolute_error']:.2f} ± {results['std_absolute_error']:.2f}")
-    print(f"  Root Mean Square Error: {results['rmse']:.2f}")
-    print(f"  Mean Relative Error: {results['mean_relative_error']:.1%}")
+    print(f"Model loaded with {n_channels} input channels")
+    print("\n" + "="*60)
+    print("INTERACTIVE SAMPLE EXPLORER")
+    print("="*60)
+    print("Commands:")
+    print("  Enter a number (0-{}) to analyze a specific sample".format(len(dataset)-1))
+    print("  'random' or 'r' for a random sample")
+    print("  'stats' or 's' to show dataset statistics")
+    print("  'quit' or 'q' to exit")
+    print("="*60)
     
-    print(f"\nSTATISTICAL METRICS:")
-    print(f"  Correlation coefficient: {results['correlation']:.3f}")
-    print(f"  R² score: {results['r2_score']:.3f}")
-
-def plot_performance_analysis(results, save_path=None):
-    """Create comprehensive performance analysis plots"""
-    
-    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-    axes = axes.flatten()
-    
-    predicted = results['predicted_counts']
-    ground_truth = results['ground_truth_counts']
-    abs_errors = results['absolute_errors']
-    
-    # 1. Scatter plot: Predicted vs Ground Truth
-    axes[0].scatter(ground_truth, predicted, alpha=0.6, s=50)
-    axes[0].plot([0, max(ground_truth.max(), predicted.max())], 
-                 [0, max(ground_truth.max(), predicted.max())], 'r--', alpha=0.8, label='Perfect Prediction')
-    axes[0].set_xlabel('Ground Truth Target Count')
-    axes[0].set_ylabel('Predicted Target Count')
-    axes[0].set_title(f'Predicted vs Ground Truth\n(r = {results["correlation"]:.3f}, R² = {results["r2_score"]:.3f})')
-    axes[0].legend()
-    axes[0].grid(True, alpha=0.3)
-    
-    # 2. Error distribution
-    axes[1].hist(abs_errors, bins=range(int(abs_errors.max()) + 2), alpha=0.7, edgecolor='black')
-    axes[1].set_xlabel('Absolute Error (|Predicted - Ground Truth|)')
-    axes[1].set_ylabel('Frequency')
-    axes[1].set_title(f'Error Distribution\n(MAE = {results["mean_absolute_error"]:.2f})')
-    axes[1].set_ylim(0, 2950)
-    axes[1].grid(True, alpha=0.3)
-    
-    # 3. Target count distributions
-    bins = range(max(ground_truth.max(), predicted.max()) + 2)
-    axes[2].hist(ground_truth, bins=bins, alpha=0.7, label='Ground Truth', edgecolor='black')
-    axes[2].hist(predicted, bins=bins, alpha=0.7, label='Predicted', edgecolor='black')
-    axes[2].set_xlabel('Target Count')
-    axes[2].set_ylabel('Frequency')
-    axes[2].set_title('Target Count Distributions')
-    axes[2].legend()
-    axes[2].grid(True, alpha=0.3)
-    
-    # 4. Error vs Ground Truth Count
-    axes[3].scatter(ground_truth, abs_errors, alpha=0.6)
-    axes[3].set_xlabel('Ground Truth Target Count')
-    axes[3].set_ylabel('Absolute Error')
-    axes[3].set_title('Error vs Ground Truth Count')
-    axes[3].grid(True, alpha=0.3)
-    
-    # 5. Cumulative accuracy
-    max_error = int(abs_errors.max())
-    accuracies = []
-    error_thresholds = range(max_error + 1)
-    for threshold in error_thresholds:
-        accuracy = np.mean(abs_errors <= threshold)
-        accuracies.append(accuracy)
-    
-    axes[4].plot(error_thresholds, accuracies, 'bo-', linewidth=2, markersize=6)
-    axes[4].set_xlabel('Error Threshold')
-    axes[4].set_ylabel('Cumulative Accuracy')
-    axes[4].set_title('Cumulative Accuracy vs Error Threshold')
-    axes[4].grid(True, alpha=0.3)
-    axes[4].set_ylim(0, 1)
-    
-    # 6. Performance summary text
-    axes[5].axis('off')
-    summary_text = f"""
-    PERFORMANCE SUMMARY
-    
-    Samples evaluated: {results['num_samples']}
-    
-    Accuracy:
-    • Perfect predictions: {results['perfect_accuracy']:.1%}
-    • Within ±1 target: {results['within_1_accuracy']:.1%}
-    • Within ±2 targets: {results['within_2_accuracy']:.1%}
-    
-    Errors:
-    • Mean Absolute Error: {results['mean_absolute_error']:.2f}
-    • RMSE: {results['rmse']:.2f}
-    • Mean Relative Error: {results['mean_relative_error']:.1%}
-    
-    Statistics:
-    • Correlation: {results['correlation']:.3f}
-    • R² Score: {results['r2_score']:.3f}
-    """
-    axes[5].text(0.05, 0.95, summary_text, transform=axes[5].transAxes, 
-                fontsize=11, verticalalignment='top', fontfamily='monospace',
-                bbox=dict(boxstyle='round,pad=0.5', facecolor='lightgray', alpha=0.8))
-    
-    plt.tight_layout()
-    
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Performance analysis saved to {save_path}")
-    
-    plt.show()
-    
-def evaluate_target_count_performance_from_loader(model, data_loader, dataset_name="test"):
-    """
-    Evaluate the end-to-end model performance using target count metrics from a DataLoader
-    
-    Args:
-        model: EndToEndTargetDetector model
-        data_loader: DataLoader with test/validation data
-        dataset_name: Name of the dataset for logging
-    
-    Returns:
-        dict: Performance metrics
-    """
-    predicted_counts = []
-    ground_truth_counts = []
-    absolute_errors = []
-    relative_errors = []
-    
-    total_samples = len(data_loader.dataset)
-    print(f"Evaluating target count performance on {total_samples} {dataset_name} samples...")
-    
-    model.eval()
-    sample_count = 0
-    
-    with torch.no_grad():
-        for batch_idx, (images, masks) in enumerate(data_loader):
-            if batch_idx % 10 == 0:
-                print(f"Processing batch {batch_idx+1}/{len(data_loader)}...")
+    while True:
+        try:
+            user_input = input(f"\nEnter sample index (0-{len(dataset)-1}) or command: ").strip().lower()
             
-            # Process each sample in the batch
-            for i in range(images.shape[0]):
-                range_doppler_map = images[i]
-                ground_truth_mask = masks[i]
+            if user_input in ['quit', 'q', 'exit']:
+                print("Goodbye!")
+                break
+            
+            elif user_input in ['random', 'r']:
+                sample_idx = np.random.randint(0, len(dataset))
+                print(f"Randomly selected sample {sample_idx}")
+            
+            elif user_input in ['stats', 's']:
+                show_dataset_stats(dataset)
+                continue
                 
-                # Get predictions
+            else:
                 try:
-                    centroids = model.predict_single(range_doppler_map)
-                    predicted_count = len(centroids)
-                except Exception as e:
-                    print(f"Error processing sample {sample_count}: {e}")
-                    sample_count += 1
+                    sample_idx = int(user_input)
+                    if sample_idx < 0 or sample_idx >= len(dataset):
+                        print(f"Invalid index. Please enter a number between 0 and {len(dataset)-1}")
+                        continue
+                except ValueError:
+                    print("Invalid input. Please enter a number, 'random', 'stats', or 'quit'")
                     continue
-                
-                # Count ground truth targets using connected components
-                gt_count = count_ground_truth_targets(ground_truth_mask)
-                
-                # Calculate errors
-                abs_error = abs(predicted_count - gt_count)
-                rel_error = abs_error / max(gt_count, 1)  # Avoid division by zero
-                
-                predicted_counts.append(predicted_count)
-                ground_truth_counts.append(gt_count)
-                absolute_errors.append(abs_error)
-                relative_errors.append(rel_error)
-                
-                sample_count += 1
-    
-    # Calculate metrics
-    predicted_counts = np.array(predicted_counts)
-    ground_truth_counts = np.array(ground_truth_counts)
-    absolute_errors = np.array(absolute_errors)
-    relative_errors = np.array(relative_errors)
-    
-    # Count-based metrics
-    perfect_predictions = np.sum(absolute_errors == 0)
-    within_1_target = np.sum(absolute_errors <= 1)
-    within_2_targets = np.sum(absolute_errors <= 2)
-    
-    # Statistical metrics
-    mean_abs_error = np.mean(absolute_errors)
-    std_abs_error = np.std(absolute_errors)
-    mean_rel_error = np.mean(relative_errors)
-    correlation = np.corrcoef(predicted_counts, ground_truth_counts)[0, 1]
-    
-    # Regression metrics
-    from sklearn.metrics import mean_squared_error, r2_score
-    mse = mean_squared_error(ground_truth_counts, predicted_counts)
-    rmse = np.sqrt(mse)
-    r2 = r2_score(ground_truth_counts, predicted_counts)
-    
-    results = {
-        'dataset_name': dataset_name,
-        'num_samples': len(predicted_counts),
-        'predicted_counts': predicted_counts,
-        'ground_truth_counts': ground_truth_counts,
-        'absolute_errors': absolute_errors,
-        'relative_errors': relative_errors,
-        
-        # Accuracy metrics
-        'perfect_accuracy': perfect_predictions / len(predicted_counts),
-        'within_1_accuracy': within_1_target / len(predicted_counts),
-        'within_2_accuracy': within_2_targets / len(predicted_counts),
-        
-        # Error metrics
-        'mean_absolute_error': mean_abs_error,
-        'std_absolute_error': std_abs_error,
-        'mean_relative_error': mean_rel_error,
-        'rmse': rmse,
-        
-        # Statistical metrics
-        'correlation': correlation,
-        'r2_score': r2,
-        
-        # Count statistics
-        'mean_predicted': np.mean(predicted_counts),
-        'mean_ground_truth': np.mean(ground_truth_counts),
-        'std_predicted': np.std(predicted_counts),
-        'std_ground_truth': np.std(ground_truth_counts),
-    }
-    
-    return results
-
+            
+            # Process the selected sample
+            analyze_single_sample(model, dataset, sample_idx)
+            
+        except KeyboardInterrupt:
+            print("\nGoodbye!")
+            break
+        except Exception as e:
+            print(f"Error: {e}")
+            continue
 
 if __name__ == "__main__":
-    print("Running comprehensive end-to-end performance evaluation on 3-channel sequence data...")
-    # Run comprehensive evaluation on the 3-frame U-Net with the specified dataset
-    results = comprehensive_evaluation()
+    # print("Running comprehensive end-to-end performance evaluation on 3-channel sequence data...")
+    # # Run comprehensive evaluation on the 3-frame U-Net with the specified dataset
+    # results = comprehensive_evaluation()
+    print("Starting interactive sample explorer...")
+    interactive_sample_explorer()
