@@ -248,14 +248,13 @@ def comprehensive_evaluation():
     
     return results
 
-def interactive_sample_explorer():
+def interactive_sample_explorer(dataset_path, model_path):
     """
     Interactive method to explore samples from the dataset using the end-to-end target detector
     """
     print("Loading dataset and model...")
     
     # Load dataset
-    dataset_path = "/Users/pepijnlens/Documents/seacluttersuppression/data/sea_clutter_single_frame.pt"
     from load_segmentation_data import create_data_loaders
     
     _, val_loader, test_loader = create_data_loaders(
@@ -276,7 +275,6 @@ def interactive_sample_explorer():
     sample_image = sample_batch[0][0]
     n_channels = sample_image.shape[0] if len(sample_image.shape) == 3 else 1
     
-    model_path = "/Users/pepijnlens/Documents/seacluttersuppression/models/unet_single_frame.pt"
     model = EndToEndTargetDetector(
         unet_weights_path=model_path,
         n_channels=n_channels,
@@ -339,4 +337,6 @@ if __name__ == "__main__":
     # # Run comprehensive evaluation on the 3-frame U-Net with the specified dataset
     # results = comprehensive_evaluation()
     print("Starting interactive sample explorer...")
-    interactive_sample_explorer()
+    dataset = "/Users/pepijnlens/Documents/SeaClutterSuppression/data/sea_clutter_multi_frame.pt"
+    model = "/Users/pepijnlens/Documents/SeaClutterSuppression/models/unet_multi_frame.pt"
+    interactive_sample_explorer(dataset, model)

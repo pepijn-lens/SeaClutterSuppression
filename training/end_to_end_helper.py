@@ -308,9 +308,9 @@ def visualize_sample_results(image, mask, centroids, sample_idx, gt_count, predi
     """
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     
-    # Input image (show first channel if multi-channel)
+    # Input image (show last channel if multi-channel)
     if len(image.shape) == 3:
-        input_display = image[0].cpu().numpy() if torch.is_tensor(image) else image[0]
+        input_display = image[-1].cpu().numpy() if torch.is_tensor(image) else image[-1]
     else:
         input_display = image.cpu().numpy() if torch.is_tensor(image) else image
     
@@ -321,7 +321,7 @@ def visualize_sample_results(image, mask, centroids, sample_idx, gt_count, predi
     # Ground truth mask
     gt_display = mask.cpu().numpy() if torch.is_tensor(mask) else mask
     if len(gt_display.shape) == 3:
-        gt_display = gt_display[0]  # Take first channel if multi-channel
+        gt_display = gt_display[-1]  # Take last channel if multi-channel
     
     axes[1].imshow(gt_display, cmap='hot', alpha=0.8)
     axes[1].imshow(input_display, cmap='viridis', alpha=0.3)
@@ -345,7 +345,6 @@ def visualize_sample_results(image, mask, centroids, sample_idx, gt_count, predi
                            fontsize=10, 
                            fontweight='bold',
                            color='white',
-                           bbox=dict(boxstyle='round,pad=0.3', facecolor='red', alpha=0.7),
                            ha='center', va='center')
     
     axes[2].set_title(f'Predictions Overlay\n{predicted_count} targets (Error: {abs(predicted_count - gt_count)})')
