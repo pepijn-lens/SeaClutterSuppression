@@ -46,9 +46,8 @@ Refer to the `training/` directory for training pipelines using CNNs, Swin Trans
 ## 📂 Project Structure
 ```plaintext
 .
-├── data/             # Synthetic and processed radar data  
+├── results/          # Images and plots of the findings
 ├── evaluation/       # Results and metrics of model performance  
-├── models/           # Saved model weights and architectures  
 ├── optuna/           # Hyperparameter tuning logs  
 ├── sea_clutter/      # Sea clutter simulation scripts  
 ├── training/         # Training pipelines for different models  
