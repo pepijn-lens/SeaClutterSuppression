@@ -43,7 +43,7 @@ def simulate_sequence_with_realistic_targets_and_masks(
         # Update and add each target
         for tgt in targets:
             # Update target velocity with realistic variations
-            update_realistic_target_velocity(tgt)
+            update_realistic_target_velocity(tgt, rp)
             
             # Convert to Target object for add_target_blob function
             simple_target = Target(

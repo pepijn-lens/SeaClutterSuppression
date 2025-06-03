@@ -53,8 +53,15 @@ def animate_sequence(
     return ani
 
 
-def update_realistic_target_velocity(tgt: RealisticTarget):
-    """Update target velocity with consistent randomness across all targets and states."""
+def update_realistic_target_velocity(tgt: RealisticTarget, rp: RadarParams):
+    """Update target velocity and Doppler frequency for a target.
+
+    The previous implementation used a hard coded carrier wavelength of
+    0.03 m when converting the updated velocity to Doppler frequency.
+    This produced incorrect Doppler values whenever the radar parameters
+    specified a different wavelength.  The function now requires the radar
+    parameters so that the correct wavelength is used.
+    """
     
     # Standard velocity noise - same for all targets and sea states
     velocity_noise_std = 0.1  # Fixed standard deviation for all targets
@@ -78,5 +85,5 @@ def update_realistic_target_velocity(tgt: RealisticTarget):
         tgt.max_velocity_mps
     )
     
-    # Update Doppler frequency based on new velocity
-    tgt.doppler_hz = 2.0 * tgt.current_velocity_mps / 0.03  # Using default wavelength
+    # Update Doppler frequency based on new velocity and radar wavelength
+    tgt.doppler_hz = 2.0 * tgt.current_velocity_mps / rp.carrier_wavelength
