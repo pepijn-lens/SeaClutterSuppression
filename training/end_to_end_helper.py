@@ -2,6 +2,8 @@ import torch
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
+import os
+from sklearn.metrics import mean_squared_error, r2_score
 
 def count_ground_truth_targets(ground_truth_mask, min_area=3):
     """
@@ -23,7 +25,7 @@ def count_ground_truth_targets(ground_truth_mask, min_area=3):
     gt_binary = (gt_mask > 0.5).astype(np.uint8)
     
     # Find connected components
-    num_labels, labels = cv2.connectedComponents(gt_binary)
+    num_labels, labels = cv2.connectedComponents(gt_binary.squeeze(0))
     
     # Count components that meet minimum area requirement
     valid_targets = 0
@@ -58,15 +60,18 @@ def print_performance_report(results):
     print(f"  Correlation coefficient: {results['correlation']:.3f}")
     print(f"  R² score: {results['r2_score']:.3f}")
 
-def plot_performance_analysis(results, save_path=None):
+def plot_performance_analysis(results, save_path='end_to_end_analysis/performance_analysis.png'):
     """Create comprehensive performance analysis plots"""
     
+    os.makedirs(save_path, exist_ok=True)
     fig, axes = plt.subplots(2, 3, figsize=(18, 12))
     axes = axes.flatten()
     
     predicted = results['predicted_counts']
     ground_truth = results['ground_truth_counts']
     abs_errors = results['absolute_errors']
+
+    len_predicted = len(predicted)
     
     # 1. Scatter plot: Predicted vs Ground Truth
     axes[0].scatter(ground_truth, predicted, alpha=0.6, s=50)
@@ -83,7 +88,8 @@ def plot_performance_analysis(results, save_path=None):
     axes[1].set_xlabel('Absolute Error (|Predicted - Ground Truth|)')
     axes[1].set_ylabel('Frequency')
     axes[1].set_title(f'Error Distribution\n(MAE = {results["mean_absolute_error"]:.2f})')
-    axes[1].set_ylim(0, 2950)
+    axes[1].set_ylim(0, 3000)
+    axes[1].set_xlim(0, ground_truth.max() - ground_truth.max()//2)
     axes[1].grid(True, alpha=0.3)
     
     # 3. Target count distributions
@@ -93,6 +99,8 @@ def plot_performance_analysis(results, save_path=None):
     axes[2].set_xlabel('Target Count')
     axes[2].set_ylabel('Frequency')
     axes[2].set_title('Target Count Distributions')
+    axes[2].set_xlim(0, ground_truth.max() + 1)
+    axes[2].set_ylim(0, len_predicted // 10 + np.ceil(len_predicted * 0.04))
     axes[2].legend()
     axes[2].grid(True, alpha=0.3)
     
@@ -146,12 +154,12 @@ def plot_performance_analysis(results, save_path=None):
     plt.tight_layout()
     
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(f'{save_path}/target_count.png', dpi=300, bbox_inches='tight')
         print(f"Performance analysis saved to {save_path}")
+    else:
+        plt.show()
     
-    plt.show()
-    
-def evaluate_target_count_performance_from_loader(model, data_loader, dataset_name="test"):
+def evaluate_target_count_performance(model, data_loader, dataset_name="test"):
     """
     Evaluate the end-to-end model performance using target count metrics from a DataLoader
     
@@ -181,7 +189,7 @@ def evaluate_target_count_performance_from_loader(model, data_loader, dataset_na
             
             # Process each sample in the batch
             for i in range(images.shape[0]):
-                range_doppler_map = images[i]
+                range_doppler_map = images[i].to('mps')
                 ground_truth_mask = masks[i]
                 
                 # Get predictions
@@ -224,8 +232,6 @@ def evaluate_target_count_performance_from_loader(model, data_loader, dataset_na
     mean_rel_error = np.mean(relative_errors)
     correlation = np.corrcoef(predicted_counts, ground_truth_counts)[0, 1]
     
-    # Regression metrics
-    from sklearn.metrics import mean_squared_error, r2_score
     mse = mean_squared_error(ground_truth_counts, predicted_counts)
     rmse = np.sqrt(mse)
     r2 = r2_score(ground_truth_counts, predicted_counts)
@@ -277,7 +283,7 @@ def analyze_single_sample(model, dataset, sample_idx):
     print(f"Ground truth mask shape: {mask.shape}")
     
     # Get ground truth target count
-    gt_count = count_ground_truth_targets(mask)
+    gt_count = count_ground_truth_targets(mask.squeeze(0))
     print(f"Ground truth targets: {gt_count}")
     
     # Get model predictions
@@ -309,7 +315,7 @@ def visualize_sample_results(image, mask, centroids, sample_idx, gt_count, predi
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     
     # Input image (show last channel if multi-channel)
-    if len(image.shape) == 3:
+    if len(image.shape) > 1:
         input_display = image[-1].cpu().numpy() if torch.is_tensor(image) else image[-1]
     else:
         input_display = image.cpu().numpy() if torch.is_tensor(image) else image
@@ -320,7 +326,7 @@ def visualize_sample_results(image, mask, centroids, sample_idx, gt_count, predi
     
     # Ground truth mask
     gt_display = mask.cpu().numpy() if torch.is_tensor(mask) else mask
-    if len(gt_display.shape) == 3:
+    if len(gt_display.shape) > 1:
         gt_display = gt_display[-1]  # Take last channel if multi-channel
     
     axes[1].imshow(gt_display, cmap='hot', alpha=0.8)
@@ -329,7 +335,7 @@ def visualize_sample_results(image, mask, centroids, sample_idx, gt_count, predi
     axes[1].axis('off')
     
     # Predictions overlay
-    axes[2].imshow(input_display, cmap='viridis', alpha=0.7)
+    axes[2].imshow(input_display, cmap='viridis', alpha=0.5)
     
     # Plot predicted centroids with labels
     if centroids:
@@ -339,7 +345,7 @@ def visualize_sample_results(image, mask, centroids, sample_idx, gt_count, predi
         # Add labels for each target
         for i, (x, y) in enumerate(centroids):
             # Add text label with a slight offset to avoid overlapping with the marker
-            axes[2].annotate(f'T{i+1}', 
+            axes[2].annotate(i+1, 
                            xy=(x, y), 
                            xytext=(x+2, y-2),  # Offset the text slightly
                            fontsize=10, 

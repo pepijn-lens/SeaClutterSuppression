@@ -3,16 +3,11 @@ import torch.nn as nn
 from typing import Tuple
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.metrics import confusion_matrix
-import torch.nn.functional as F
-import time
-import logging
 
 import os
 import seaborn as sns
-from scipy import stats
 
-from load_segmentation_data import create_data_loaders  # Your dataset file
+from load_data import create_data_loaders  # Your dataset file
 from sklearn.metrics import precision_score, recall_score
 
 # ---------------------------
@@ -85,16 +80,15 @@ def evaluate(model, loader, device) -> Tuple[float, float, float]:
 # ---------------------------
 # 3. Training Loop
 # ---------------------------
-def train_model(dataset_path: str, num_epochs=30, batch_size=16, lr=1e-4, pretrained=None, model_save_path='unet_single_frame.pt'):
+def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, batch_size=16, lr=1e-4, pretrained=None, model_save_path='unet_single_frame.pt'):
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
 
     train_loader, val_loader, _ = create_data_loaders(
         dataset_path=dataset_path,
         batch_size=batch_size,
-        mask_strategy='last',
     )
 
-    model = UNet(n_channels=1).to(device)
+    model = UNet(n_channels=n_channels).to(device)  # Now uses the parameter
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f'{trainable_params:,} trainable parameters')
     if pretrained:
@@ -105,7 +99,6 @@ def train_model(dataset_path: str, num_epochs=30, batch_size=16, lr=1e-4, pretra
 
     # Early stopping variables
     best_dice = 0.0
-    patience = 8
     patience_counter = 0
 
     for epoch in range(num_epochs):
@@ -145,125 +138,18 @@ def train_model(dataset_path: str, num_epochs=30, batch_size=16, lr=1e-4, pretra
     print(f"Best model saved to {model_save_path} with Dice score: {best_dice:.3f}")
 
 
-# ---------------------------
-# 5. Plot Worst Samples - Dice Scores 
-# ---------------------------
-def plot_worst_samples_dice_scores(model_path: str, dataset_path: str, n_worst: int = 100, 
-                                   batch_size: int = 16, save_path: str = None):
-    """
-    Plot Dice scores for the worst N samples.
-    
-    Args:
-        model_path: Path to the saved model
-        dataset_path: Path to the dataset
-        n_worst: Number of worst samples to analyze
-        batch_size: Batch size for data loading
-        save_path: Path to save the plot (optional)
-    """
-    import os
-    
-    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
-    
-    # Load model
-    model = UNet(n_channels=1).to(device)
-    model.load_state_dict(torch.load(model_path, map_location=device))
-    model.eval()
-    
-    # Load data
-    _, val_loader, test_loader = create_data_loaders(
-        dataset_path=dataset_path,
-        batch_size=batch_size,
-    )
-    
-    eval_loader = test_loader if test_loader.dataset.__len__() > 0 else val_loader
-    
-    print(f"Evaluating all samples to find {n_worst} worst performers...")
-    
-    # Collect all samples with their Dice scores
-    sample_data = []
-    sample_idx = 0
-    
-    with torch.no_grad():
-        for batch_idx, (images, masks) in enumerate(eval_loader):
-            images, masks = images.to(device), masks.to(device)
-            outputs = model(images)
-            
-            # Process each sample in the batch
-            for i in range(images.shape[0]):
-                # Calculate Dice coefficient for this sample
-                sample_dice = dice_coeff(outputs[i:i+1], masks[i:i+1])
-                
-                # Store sample data
-                sample_data.append({
-                    'sample_idx': sample_idx,
-                    'dice_score': sample_dice
-                })
-                
-                sample_idx += 1
-    
-    # Sort by Dice score (ascending - worst first)
-    sample_data.sort(key=lambda x: x['dice_score'])
-    
-    # Take the worst N samples
-    worst_samples = sample_data[:n_worst]
-    
-    # Extract data for plotting
-    ranks = list(range(1, n_worst + 1))  # Rank from 1 to n_worst
-    dice_scores = [sample['dice_score'] for sample in worst_samples]
-    
-    # Create the plot
-    plt.figure(figsize=(12, 8))
-    plt.plot(ranks, dice_scores, 'b-', linewidth=2, marker='o', markersize=4, alpha=0.7)
-    plt.xlabel('Worst Sample Rank', fontsize=12)
-    plt.ylabel('Dice Score', fontsize=12)
-    plt.title(f'Dice Scores for {n_worst} Worst Performing Samples', fontsize=14)
-    plt.grid(True, alpha=0.3)
-    
-    # Add some statistics as text
-    min_dice = min(dice_scores)
-    max_dice = max(dice_scores)
-    mean_dice = np.mean(dice_scores)
-    
-    stats_text = f'Min Dice: {min_dice:.4f}\nMax Dice: {max_dice:.4f}\nMean Dice: {mean_dice:.4f}'
-    plt.text(0.02, 0.98, stats_text, transform=plt.gca().transAxes, 
-             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
-    
-    # Highlight the very worst samples
-    if n_worst >= 10:
-        worst_10_ranks = ranks[:10]
-        worst_10_scores = dice_scores[:10]
-        plt.scatter(worst_10_ranks, worst_10_scores, color='red', s=50, zorder=5, 
-                   label='Top 10 Worst', alpha=0.8)
-        plt.legend()
-    
-    plt.tight_layout()
-    
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Plot saved to: {save_path}")
-    else:
-        plt.show()
-    
-    # Print some statistics
-    print(f"\nWorst {n_worst} samples statistics:")
-    print(f"Dice score range: {min_dice:.4f} - {max_dice:.4f}")
-    print(f"Mean Dice score: {mean_dice:.4f}")
-    print(f"Standard deviation: {np.std(dice_scores):.4f}")
-    
-    return ranks, dice_scores
-
-def comprehensive_model_analysis(model_path: str, dataset_path: str, batch_size: int = 16, save_dir: str = "model_analysis"):
+def comprehensive_model_analysis(model_path: str, dataset_path: str, n_channels=3, batch_size: int = 16, save_dir: str = 'single_frame'):
     """
     Comprehensive model performance analysis with multiple visualizations.
     """
     import pandas as pd
     
-    os.makedirs(save_dir, exist_ok=True)
+    os.makedirs(f'analysis_{type}', exist_ok=True)
     
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
     # Load model and data
-    model = UNet(n_channels=1).to(device)  # Single channel model
+    model = UNet(n_channels=n_channels).to(device)  # Single channel model
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
     
@@ -370,7 +256,7 @@ def comprehensive_model_analysis(model_path: str, dataset_path: str, batch_size:
     plt.xlabel('Worst Sample Rank')
     plt.ylabel('Dice Score')
     plt.title('Worst 100 Samples Performance')
-    plt.ylim(0.09, 0.83)  # Set y-axis limit to 0-0.8
+    plt.ylim(0, 1)  # Set y-axis limit to 0,1
     plt.grid(True, alpha=0.3)
     
     # 5. Precision vs Recall
@@ -463,7 +349,7 @@ def comprehensive_model_analysis(model_path: str, dataset_path: str, batch_size:
     plt.legend()
     
     plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'comprehensive_analysis_single_channel.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(f'analysis_{save_dir}/dice.png', dpi=300, bbox_inches='tight')
     plt.close()
     
     # Generate summary statistics
@@ -490,7 +376,7 @@ def comprehensive_model_analysis(model_path: str, dataset_path: str, batch_size:
     }
     
     # Save summary
-    with open(os.path.join(save_dir, 'summary_statistics_single_channel.txt'), 'w') as f:
+    with open(os.path.join(f'analysis_{save_dir}/', 'statistics.txt'), 'w') as f:
         f.write("SINGLE CHANNEL MODEL ANALYSIS\n")
         f.write("=" * 40 + "\n\n")
         for category, stats in summary_stats.items():
@@ -505,18 +391,11 @@ def comprehensive_model_analysis(model_path: str, dataset_path: str, batch_size:
 
 
 if __name__ == "__main__":
-    dataset_file = f"/Users/pepijnlens/Documents/transformers/data/sea_clutter_single_frame.pt"
-    model_file = f"models/unet_single_frame.pt"
-
-    intrepretation_file = f"interpretation_results_single_frame.png"
-    log_file = f"interpretation_results_single_frame.log"
+    type = 'single'
+    dataset_file = f"data/sea_clutter_{type}_frame.pt"
+    model_file = f"models/unet_{type}_frame.pt"
     
-    train_model(dataset_file, num_epochs=50, batch_size=16, pretrained='/Users/pepijnlens/Documents/transformers/models/unet_sequences.pt', lr=1e-4, model_save_path=model_file)
+    train_model(dataset_file, n_channels=1, num_epochs=50, batch_size=16, lr=1e-4, model_save_path=model_file)
     
     # Comprehensive analysis
-    df, stats = comprehensive_model_analysis(model_file, dataset_file, save_dir="model_analysis_roll")
-
-    # Plot Dice scores for worst 100 samples
-    plot_worst_samples_dice_scores(model_file, dataset_file, n_worst=100, 
-                                   save_path="worst_100_samples_dice_plot.png")
-    
+    df, stats = comprehensive_model_analysis(model_file, dataset_file, n_channels=1, save_dir=type)

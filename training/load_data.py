@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
-from typing import Tuple, Dict, Any
+from typing import Tuple
 from sklearn.model_selection import train_test_split
 
 class RadarSegmentationDataset(Dataset):
@@ -19,7 +19,6 @@ class RadarSegmentationDataset(Dataset):
         val_ratio: float = 0.15,
         test_ratio: float = 0.15,
         random_state: int = 42,
-        mask_strategy: str = 'last'  # 'middle', 'last', 'aggregate'
     ):
         """
         Initialize the dataset.
@@ -31,18 +30,12 @@ class RadarSegmentationDataset(Dataset):
             val_ratio: Fraction of data for validation  
             test_ratio: Fraction of data for testing
             random_state: Random seed for reproducible splits
-            mask_strategy: How to handle sequence masks:
-                - 'middle': Use middle frame mask
-                - 'last': Use last frame mask
-                - 'aggregate': Combine all masks (logical OR)
         """
         
         assert split in ['train', 'val', 'test', 'all'], f"Invalid split: {split}"
         assert abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6, "Ratios must sum to 1.0"
-        assert mask_strategy in ['middle', 'last', 'aggregate'], f"Invalid mask_strategy: {mask_strategy}"
         
         self.split = split
-        self.mask_strategy = mask_strategy
         
         # Load the dataset
         print(f"Loading dataset from: {dataset_path}")
@@ -140,30 +133,21 @@ class RadarSegmentationDataset(Dataset):
         # Get sequence and mask sequence
         sequence = self.sequences[idx].clone()  # Shape: (n_frames, H, W)
         mask_sequence = self.mask_sequences[idx].clone()  # Shape: (n_frames, H, W)
-        
-        # Handle mask based on strategy
-        if self.mask_strategy == 'middle':
-            # Use middle frame mask
-            middle_idx = self.n_frames // 2
-            mask = mask_sequence[middle_idx]  # Shape: (H, W)
-        elif self.mask_strategy == 'last':
-            # Use last frame mask
-            mask = mask_sequence[-1]  # Shape: (H, W)
-        elif self.mask_strategy == 'aggregate':
-            # Aggregate all masks (logical OR)
-            mask = torch.clamp(mask_sequence.sum(dim=0), 0, 1)  # Shape: (H, W)
-        
+
+        mask = mask_sequence[-1]  # Take the last frame mask by default
+
         # For sequence data, use all frames as channels
         if self.is_sequence:
             # Use all frames as channels: (n_frames, H, W) = (3, H, W)
             image = sequence  # Shape: (3, H, W) for 3-frame sequences
+            mask = mask.unsqueeze(0)
         else:
             # Single frame data, add channel dimension
             image = sequence[0].unsqueeze(0)  # Shape: (1, H, W) - single channel
+            mask = mask.unsqueeze(0)  # Shape: (1, H, W) - single channel
         
         # Keep mask as single channel without extra dimension
         # mask stays as (H, W) - U-Net expects this for binary segmentation
-        
         return image, mask
 
 def create_data_loaders(
@@ -175,7 +159,6 @@ def create_data_loaders(
     test_ratio: float = 0.15,
     random_state: int = 42,
     pin_memory: bool = False,
-    mask_strategy: str = 'last'
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Create train, validation, and test data loaders.
@@ -187,7 +170,6 @@ def create_data_loaders(
         train_ratio, val_ratio, test_ratio: Data split ratios
         random_state: Random seed for reproducible splits
         pin_memory: Whether to pin memory for faster GPU transfer
-        mask_strategy: How to handle sequence masks ('middle', 'last', 'aggregate')
         
     Returns:
         Tuple of (train_loader, val_loader, test_loader)
@@ -201,7 +183,6 @@ def create_data_loaders(
         val_ratio=val_ratio,
         test_ratio=test_ratio,
         random_state=random_state,
-        mask_strategy=mask_strategy
     )
     
     val_dataset = RadarSegmentationDataset(
@@ -211,7 +192,6 @@ def create_data_loaders(
         val_ratio=val_ratio,
         test_ratio=test_ratio,
         random_state=random_state,
-        mask_strategy=mask_strategy
     )
     
     test_dataset = RadarSegmentationDataset(
@@ -221,7 +201,6 @@ def create_data_loaders(
         val_ratio=val_ratio,
         test_ratio=test_ratio,
         random_state=random_state,
-        mask_strategy=mask_strategy
     )
     
     # Create data loaders
@@ -254,7 +233,6 @@ def create_data_loaders(
     print(f"  Train: {len(train_loader)} batches ({len(train_dataset)} samples)")
     print(f"  Val:   {len(val_loader)} batches ({len(val_dataset)} samples)")
     print(f"  Test:  {len(test_loader)} batches ({len(test_dataset)} samples)")
-    print(f"  Mask strategy: {mask_strategy}")
     print(f"  Frames per sequence: {train_dataset.n_frames}")
     
     return train_loader, val_loader, test_loader

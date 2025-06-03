@@ -6,7 +6,7 @@ import numpy as np
 from sklearn.metrics import confusion_matrix, precision_score, recall_score
 
 
-from load_segmentation_data import create_data_loaders
+from training.load_data import create_data_loaders
 from Swin_Net import SwinUNET, CombinedLoss
 
 def dice_coeff(pred, target, smooth=1.):

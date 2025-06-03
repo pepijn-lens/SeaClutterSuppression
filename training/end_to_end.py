@@ -4,48 +4,11 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 import cv2
 
-from end_to_end_helper import plot_performance_analysis, print_performance_report, evaluate_target_count_performance_from_loader, show_dataset_stats, analyze_single_sample
+# Import the data loading function from your training file
+from load_data import create_data_loaders
+from end_to_end_helper import plot_performance_analysis, print_performance_report, evaluate_target_count_performance, show_dataset_stats, analyze_single_sample
+from unet_training import UNet
 
-
-# Use your U-Net architecture from unet_training.py
-class DoubleConv(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.double_conv = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, 3, padding=1),
-            nn.ReLU(inplace=True),
-        )
-
-    def forward(self, x):
-        return self.double_conv(x)
-
-class UNet(nn.Module):
-    def __init__(self, n_channels=3, n_classes=1):
-        super().__init__()
-        self.enc1 = DoubleConv(n_channels, 64)
-        self.enc2 = DoubleConv(64, 128)
-        self.enc3 = DoubleConv(128, 256)
-
-        self.pool = nn.MaxPool2d(2)
-        self.up2 = nn.ConvTranspose2d(256, 128, 2, stride=2)
-        self.dec2 = DoubleConv(256, 128)
-        self.up1 = nn.ConvTranspose2d(128, 64, 2, stride=2)
-        self.dec1 = DoubleConv(128, 64)
-
-        self.out_conv = nn.Conv2d(64, n_classes, kernel_size=1)
-
-    def forward(self, x):
-        x1 = self.enc1(x)
-        x2 = self.enc2(self.pool(x1))
-        x3 = self.enc3(self.pool(x2))
-
-        x = self.up2(x3)
-        x = self.dec2(torch.cat([x, x2], dim=1))
-        x = self.up1(x)
-        x = self.dec1(torch.cat([x, x1], dim=1))
-        return self.out_conv(x)
 
 class ClusteringModule:
     """Clustering module to extract centroids from binary maps"""
@@ -148,6 +111,8 @@ class EndToEndTargetDetector(nn.Module):
         
         # Only convert to CPU/NumPy for clustering operations
         batch_centroids = []
+
+        #TODO: number of targets is stored in data set with key 'labels
         
         for i in range(binary_maps.shape[0]):
             # Move single sample to CPU for clustering
@@ -188,20 +153,13 @@ class EndToEndTargetDetector(nn.Module):
         return batch_centroids[0]  # Return centroids for first (and only) sample
 
 
-def comprehensive_evaluation():
+def comprehensive_evaluation(dataset_path, model_path, save= 'multi_frame'):
     """Run a comprehensive evaluation of the end-to-end model using test data"""
-    
-    # Load dataset using the same method as in training
-    dataset_path = "/Users/pepijnlens/Documents/transformers/data/sea_clutter_single_frame.pt"
-    
-    # Import the data loading function from your training file
-    from training.load_segmentation_data import create_data_loaders
     
     # Create data loaders same as in training
     _, val_loader, test_loader = create_data_loaders(
         dataset_path=dataset_path,
         batch_size=16,
-        mask_strategy='last',
     )
     
     # Use test loader for evaluation
@@ -216,15 +174,13 @@ def comprehensive_evaluation():
     sample_image = sample_batch[0][0]  # First image from first batch
     
     # For sequence data with 3 frames, n_channels should be 3
-    if len(sample_image.shape) == 3:  # (C, H, W)
+    if len(sample_image.shape) > 1:  # (C, H, W)
         n_channels = sample_image.shape[0]
     else:  # Single channel
         n_channels = 1
     
     print(f"Detected {n_channels} input channels from sample shape: {sample_image.shape}")
-    
-    model_path = "/Users/pepijnlens/Documents/transformers/models/unet_single_frame.pt"
-    
+        
     # Create model with detected parameters
     model = EndToEndTargetDetector(
         unet_weights_path=model_path,
@@ -234,17 +190,17 @@ def comprehensive_evaluation():
             'eps': 1,
             'min_samples': 1
         }
-    )
+    ).to('mps')  # Move model to MPS 
     
     # Evaluate performance on test data
     print("Running comprehensive evaluation on test data...")
-    results = evaluate_target_count_performance_from_loader(model, eval_loader, eval_dataset_name)
+    results = evaluate_target_count_performance(model, eval_loader, eval_dataset_name)
     
     # Print report
     print_performance_report(results)
     
     # Create plots
-    plot_performance_analysis(results, save_path=f'target_count_performance_analysis_{eval_dataset_name}.png')
+    plot_performance_analysis(results, save_path=f'end_to_end_analysis/{save}')
     
     return results
 
@@ -254,13 +210,9 @@ def interactive_sample_explorer(dataset_path, model_path):
     """
     print("Loading dataset and model...")
     
-    # Load dataset
-    from load_segmentation_data import create_data_loaders
-    
     _, val_loader, test_loader = create_data_loaders(
         dataset_path=dataset_path,
         batch_size=1,  # Load one sample at a time
-        mask_strategy='last',
     )
     
     # Use test loader for exploration, fallback to validation
@@ -333,10 +285,12 @@ def interactive_sample_explorer(dataset_path, model_path):
             continue
 
 if __name__ == "__main__":
-    # print("Running comprehensive end-to-end performance evaluation on 3-channel sequence data...")
-    # # Run comprehensive evaluation on the 3-frame U-Net with the specified dataset
-    # results = comprehensive_evaluation()
+    dataset = 'data/sea_clutter_multi_frame.pt'
+    model = 'models/unet_multi_frame.pt'
+    
+    print("Running comprehensive end-to-end performance evaluation on 3-channel sequence data...")
+    # Run comprehensive evaluation on the 3-frame U-Net with the specified dataset
+    results = comprehensive_evaluation(dataset, model, save='multi_frame')
+
     print("Starting interactive sample explorer...")
-    dataset = "/Users/pepijnlens/Documents/SeaClutterSuppression/data/sea_clutter_multi_frame.pt"
-    model = "/Users/pepijnlens/Documents/SeaClutterSuppression/models/unet_multi_frame.pt"
     interactive_sample_explorer(dataset, model)
