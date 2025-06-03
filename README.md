@@ -2,6 +2,7 @@
 
 This repository contains the code developed as part of my BSc thesis at **Leiden University** and internship at **TNO**, titled:
 
+
 **_End-to-End Target Detection in Range-Doppler Maps with Temporal U-Nets: Deep Learning Approaches for Maritime Radar_**
 
 ## 📘 Overview
@@ -42,6 +43,25 @@ This work demonstrates how AI, particularly deep learning, can be applied to rea
 ### Model Training
 
 Refer to the `training/` directory for training pipelines using CNNs, Swin Transformers, and U-Nets.
+### Reproducible Pipeline
+
+Use `reproduce.py` to generate data, train a U-Net, and run the detector.
+
+Generate data:
+```bash
+python reproduce.py generate --samples 1000 --max-targets 5 --sea-state 5 --frames 1 --output data/dataset.pt
+```
+
+Train the model:
+```bash
+python reproduce.py train-unet data/dataset.pt --epochs 30 --batch-size 16 --output models/unet.pt
+```
+
+Start the interactive explorer:
+```bash
+python reproduce.py detect data/dataset.pt models/unet.pt --interactive
+```
+
 
 ## 📂 Project Structure
 ```plaintext
