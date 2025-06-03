@@ -42,8 +42,6 @@ class TargetSimulator:
         return truths
 
 class PulsedRadar:
-    # Voor een range resolution van 1 meter, moet de bandbreedte 150 MHz zijn (dus de sampling rate 150*2 MHz). 
-    # Voor een velocity resolution van 0.5 m/s, moet de pulse repetition interval 66.7 microseconds zijn.
     def __init__(self, BW=50e6, fs=100e6, tau=10e-6, PRI=50e-6, fc=10e9, n_pulses=256, noise=1.0, snr=20, rcs_variation=False, device='cpu'):
         self.fs = fs  # Sampling frequency
         self.tau = tau  # Pulse duration 

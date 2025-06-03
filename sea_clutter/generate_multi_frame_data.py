@@ -3,9 +3,9 @@ import torch
 import numpy as np
 import random
 from tqdm import tqdm
-from parameters import RadarParams, ClutterParams, SequenceParams, TargetType, get_clutter_params_for_sea_state, create_realistic_target, Target
+from parameters import RadarParams, ClutterParams, SequenceParams, TargetType, get_clutter_params_for_sea_state, create_realistic_target, Target, RealisticTarget
 from physics import add_target_blob, compute_range_doppler, simulate_sea_clutter
-from sea_helper import update_realistic_target_velocity, RealisticTarget
+from sea_helper import update_realistic_target_velocity
 
 MIN_RANGE = 30  # Minimum range for targets
 MAX_RANGE = 128 - 30  # Maximum range for targets

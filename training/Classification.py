@@ -183,7 +183,7 @@ def evaluate(model, test_loader, device):
     print(f"Test Accuracy: {acc:.2f}%")
     return acc
 
-def analyze_model(model, dataloader, device, class_names=None, max_misclassified=10, save_path="model.png", accruacy=0):
+def analyze_model(model, dataloader, device, class_names=None, max_misclassified=10, save_path="model.png", accuracy=0):
     dir = f"confusion_matrices/{save_path}"
     os.makedirs(dir, exist_ok=True)
     model.eval()
@@ -208,7 +208,7 @@ def analyze_model(model, dataloader, device, class_names=None, max_misclassified
     cm = confusion_matrix(all_labels, all_preds)
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
     disp.plot()
-    plt.title(f"Confusion Matrix | Accuracy: {accruacy:.2f}%")
+    plt.title(f"Confusion Matrix | Accuracy: {accuracy:.2f}%")
     plt.savefig(dir + "/confusion_matrix.png")
     plt.close()
 
@@ -361,5 +361,5 @@ if __name__ == "__main__":
     accuracy = evaluate(model, test_loader, device)
 
     class_names = [f"{i} target{'s' if i != 1 else ''}" for i in range(6)]  # or set your own
-    analyze_model(model, test_loader, device, max_misclassified=10, save_path=f"{model_name[:-3]}/{dataset_pt[4:-3]}", accruacy=accuracy)
+    analyze_model(model, test_loader, device, max_misclassified=10, save_path=f"{model_name[:-3]}/{dataset_pt[4:-3]}", accuracy=accuracy)
 
