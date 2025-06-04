@@ -7,7 +7,7 @@ import numpy as np
 import os
 import seaborn as sns
 
-from sea_clutter import create_data_loaders  # Your dataset file
+from sea_clutter import create_data_loaders  
 from sklearn.metrics import precision_score, recall_score
 
 import models
@@ -42,6 +42,7 @@ def evaluate(model, loader, device) -> Tuple[float, float, float]:
 # ---------------------------
 def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, batch_size=16, lr=1e-4, pretrained=None, model_save_path='unet_single_frame.pt'):
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+    os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
 
     train_loader, val_loader, _ = create_data_loaders(
         dataset_path=dataset_path,
@@ -104,7 +105,7 @@ def comprehensive_model_analysis(model_path: str, dataset_path: str, n_channels=
     """
     import pandas as pd
     
-    os.makedirs(f'u_net_analysis/{type}', exist_ok=True)
+    os.makedirs(f'u_net_analysis/{save_dir}', exist_ok=True)
     
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
@@ -125,10 +126,6 @@ def comprehensive_model_analysis(model_path: str, dataset_path: str, n_channels=
     with torch.no_grad():
         for batch_idx, (images, masks) in enumerate(eval_loader):
             images, masks = images.to(device), masks.to(device)
-            
-            # Handle single channel input - take only one channel if multi-channel data
-            if images.shape[1] > 1:
-                images = images[:, -1:, :, :]  # Take last channel for single channel model
             
             outputs = model(images)
             probabilities = torch.sigmoid(outputs)
@@ -309,6 +306,7 @@ def comprehensive_model_analysis(model_path: str, dataset_path: str, n_channels=
     plt.legend()
     
     plt.tight_layout()
+    os.makedirs(f'analysis_{save_dir}', exist_ok=True)
     plt.savefig(f'analysis_{save_dir}/dice.png', dpi=300, bbox_inches='tight')
     plt.close()
     
@@ -364,11 +362,11 @@ if __name__ == "__main__":
                         help="Number of training epochs")
     parser.add_argument("--lr", type=float, default=1e-4,
                         help="Learning rate")
-    parser.add_argument("--batch-size", type=int, default=16,
+    parser.add_argument("--batch-size", type=int, default=32,
                         help="Training batch size")
     parser.add_argument("--patience", type=int, default=10,
                         help="Early stopping patience")
-    parser.add_argument("--model-save-path", type=str, default="unet_model.pt",
+    parser.add_argument("--model-save-path", type=str, default="pretrained/test_model.pt",
                         help="Where to save the trained model")
 
     args = parser.parse_args()
@@ -388,5 +386,5 @@ if __name__ == "__main__":
         args.model_save_path,
         args.dataset_path,
         n_channels=args.n_channels,
-        save_dir="analysis",
+        save_dir= 'single_frame' if args.n_channels == 1 else 'multi_frame',
     )

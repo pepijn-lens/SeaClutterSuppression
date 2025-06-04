@@ -35,31 +35,21 @@ This work demonstrates how AI, particularly deep learning, can be applied to rea
 
 ## ⚙️ Usage
 
-### Synthetic Data Generation
+### Script Usage
 
-- **Without clutter**: Run `radar.py`
-- **With sea clutter**: Use the scripts in the `sea_clutter/` directory
-
-### Model Training
-
-Refer to the `training/` directory for training pipelines using CNNs, Swin Transformers, and U-Nets.
-### Reproducible Pipeline
-
-Use `reproduce.py` to generate data, train a U-Net, and run the detector.
-
-Generate data:
+Generate data directly:
 ```bash
-python reproduce.py generate --samples 1000 --max-targets 5 --sea-state 5 --frames 1 --output data/dataset.pt
+python src/generate_data.py --samples 1000 --max-targets 5 --sea-state 5 --frames 3 --save-path data/dataset.pt
 ```
 
-Train the model:
+Train a U-Net from the dataset:
 ```bash
-python reproduce.py train-unet data/dataset.pt --epochs 30 --batch-size 16 --output pretrained/unet.pt
+python src/unet_training.py --dataset-path data/dataset.pt --n-channels 3 --epochs 30 --batch-size 16 --lr 1e-4 --model-save-path pretrained/unet.pt
 ```
 
-Start the interactive explorer:
+Evaluate the trained detector:
 ```bash
-python reproduce.py detect data/dataset.pt pretrained/unet.pt --interactive
+python src/end_to_end_evaluate.py --dataset data/dataset.pt --model pretrained/unet.pt --save-path end_to_end_results --cluster-min-area 3 --cluster-eps 1 --cluster-min-samples 1 --interactive
 ```
 
 

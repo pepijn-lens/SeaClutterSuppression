@@ -3,5 +3,11 @@ data/
 pretrained/
 .venv/
 
+# Ignore Python cache files
+*__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-
+sea_clutter_segmentation_sequences.pt
+single_frame_test.pt

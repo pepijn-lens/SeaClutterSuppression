@@ -4,6 +4,10 @@ import numpy as np
 from typing import Tuple
 from sklearn.model_selection import train_test_split
 
+import matplotlib.pyplot as plt
+from typing import Optional
+
+
 class RadarSegmentationDataset(Dataset):
     """
     PyTorch Dataset class for radar target segmentation with U-Net using sequence data.
@@ -19,6 +23,7 @@ class RadarSegmentationDataset(Dataset):
         val_ratio: float = 0.15,
         test_ratio: float = 0.15,
         random_state: int = 42,
+        visualize: Optional[bool] = False
     ):
         """
         Initialize the dataset.
@@ -36,6 +41,7 @@ class RadarSegmentationDataset(Dataset):
         assert abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6, "Ratios must sum to 1.0"
         
         self.split = split
+        self.visualize = visualize
         
         # Load the dataset
         print(f"Loading dataset from: {dataset_path}")
@@ -134,17 +140,18 @@ class RadarSegmentationDataset(Dataset):
         sequence = self.sequences[idx].clone()  # Shape: (n_frames, H, W)
         mask_sequence = self.mask_sequences[idx].clone()  # Shape: (n_frames, H, W)
 
-        mask = mask_sequence[-1]  # Take the last frame mask by default
+        if not self.visualize:
+            mask_sequence = mask_sequence[-1]  # Take the last frame mask by default
 
         # For sequence data, use all frames as channels
         if self.is_sequence:
             # Use all frames as channels: (n_frames, H, W) = (3, H, W)
             image = sequence  # Shape: (3, H, W) for 3-frame sequences
-            mask = mask.unsqueeze(0)
+            mask = mask_sequence.unsqueeze(0)  # Shape: (1, H, W) - single channel mask
         else:
             # Single frame data, add channel dimension
             image = sequence[0].unsqueeze(0)  # Shape: (1, H, W) - single channel
-            mask = mask.unsqueeze(0)  # Shape: (1, H, W) - single channel
+            mask = mask[0].unsqueeze(0)  # Shape: (1, H, W) - single channel
         
         # Keep mask as single channel without extra dimension
         # mask stays as (H, W) - U-Net expects this for binary segmentation
@@ -237,3 +244,41 @@ def create_data_loaders(
     
     return train_loader, val_loader, test_loader
 
+
+def visualize_sample(
+    dataset: RadarSegmentationDataset, 
+    idx: int = 0, 
+    figsize: Tuple[int, int] = (15, 8)
+) -> None:
+    """
+    Visualize a single sample from the dataset showing all frames with target mask overlay.
+    
+    Args:
+        dataset: RadarSegmentationDataset instance
+        idx: Index of sample to visualize
+        figsize: Figure size for the plot
+    """
+    
+    # Get a sample
+    image, mask_sequence = dataset[idx]  # mask_sequence: (n_frames, H, W)
+    frame_count = mask_sequence.shape[0]
+    fig, axes = plt.subplots(1, frame_count + 1, figsize=figsize)
+    for i in range(frame_count):
+        axes[i].imshow(image[i], cmap='viridis', aspect='auto')
+        mask_overlay = mask_sequence[i].squeeze()
+        mask_overlay = np.ma.masked_where(mask_overlay == 0, mask_overlay)
+        axes[i].imshow(mask_overlay, cmap='Reds', alpha=0.7, aspect='auto')
+        axes[i].set_title(f'Frame {i+1} + Mask')
+        axes[i].axis('off')
+    axes[frame_count].imshow(mask_sequence[-1].squeeze(), cmap='Reds', aspect='auto')
+    axes[frame_count].set_title('Target Mask Only')
+    axes[frame_count].axis('off')
+    plt.tight_layout()
+    plt.show()
+    
+    print(f"Sample {idx}:")
+    print(f"  Image shape: {image.shape}")
+    print(f"  Mask sequence shape: {mask_sequence.shape}")
+
+if __name__ == "__main__":
+    visualize_sample(RadarSegmentationDataset('single_frame_test.pt', visualize=True), idx=122)
