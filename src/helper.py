@@ -3,10 +3,9 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 import pandas as pd 
-from models.swin_transformer import radar_swin_t
-from training.swin_training import RadarDataset
 
-
+import models
+from training import RadarDataset
 
 c0 = 299792458
 
@@ -166,7 +165,7 @@ if __name__ == "__main__":
     model_name = "/Users/pepijnlens/Documents/transformers/pretrained/multiframe_sea_monster.pt"
     dataset_name = "sea_clutter-4_frames-25SCR.pt"
 
-    model = radar_swin_t(
+    model = models.radar_swin_t(
         in_channels=4,  # Changed from 1 to 4 for the 4 frames
         num_classes=6,
         hidden_dim=128,

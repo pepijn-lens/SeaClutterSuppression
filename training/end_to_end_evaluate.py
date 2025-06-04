@@ -3,9 +3,7 @@ import numpy as np
 # Import the data loading function from your training file
 from sea_clutter import create_data_loaders
 from .end_to_end_helper import plot_performance_analysis, print_performance_report, evaluate_target_count_performance, show_dataset_stats, analyze_single_sample
-from models import EndToEndTargetDetector
-        
-
+import models
 
 def comprehensive_evaluation(dataset_path, model_path, save= 'multi_frame'):
     """Run a comprehensive evaluation of the end-to-end model using test data"""
@@ -36,7 +34,7 @@ def comprehensive_evaluation(dataset_path, model_path, save= 'multi_frame'):
     print(f"Detected {n_channels} input channels from sample shape: {sample_image.shape}")
         
     # Create model with detected parameters
-    model = EndToEndTargetDetector(
+    model = models.EndToEndTargetDetector(
         unet_weights_path=model_path,
         n_channels=n_channels,
         clustering_params={
@@ -81,7 +79,7 @@ def interactive_sample_explorer(dataset_path, model_path):
     sample_image = sample_batch[0][0]
     n_channels = sample_image.shape[0] if len(sample_image.shape) == 3 else 1
     
-    model = EndToEndTargetDetector(
+    model = models.EndToEndTargetDetector(
         unet_weights_path=model_path,
         n_channels=n_channels,
         clustering_params={

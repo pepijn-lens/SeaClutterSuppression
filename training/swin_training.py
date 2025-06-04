@@ -1,11 +1,10 @@
-from models import radar_swin_t, swin_t
+import models
+
 import os
 import torch
 from torch.utils.data import Dataset, random_split, DataLoader
 import time
 import matplotlib.pyplot as plt
-import optuna
-import logging
 import math
 from torch.optim.lr_scheduler import LambdaLR
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
@@ -245,7 +244,7 @@ def objective(trial, dataset_pth="data/30dB.pt"):
         heads = 16
     head_dim = hidden_dim // heads
 
-    model = radar_swin_t(
+    model = models.radar_swin_t(
         in_channels=4,
         num_classes=6,
         hidden_dim=hidden_dim,
@@ -309,7 +308,7 @@ if __name__ == "__main__":
     # logger.info(f"Best value: {study.best_trial.value}")
     # logger.info(f"Best params: {study.best_trial.params}")
 
-    model = radar_swin_t(
+    model = models.radar_swin_t(
         num_classes=6,
         hidden_dim=128,  # 2 * (patch_size ** 2) * 4
         window_size=(2, 8),  # (2, 8) for 4 frames

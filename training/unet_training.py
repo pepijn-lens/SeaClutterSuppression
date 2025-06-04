@@ -10,7 +10,7 @@ import seaborn as sns
 from sea_clutter import create_data_loaders  # Your dataset file
 from sklearn.metrics import precision_score, recall_score
 
-from models import UNet
+import models
 
 # ---------------------------
 # 2. Metrics
@@ -48,7 +48,7 @@ def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, b
         batch_size=batch_size,
     )
 
-    model = UNet(n_channels=n_channels).to(device)  # Now uses the parameter
+    model = models.UNet(n_channels=n_channels).to(device)  # Now uses the parameter
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f'{trainable_params:,} trainable parameters')
     if pretrained:
@@ -109,7 +109,7 @@ def comprehensive_model_analysis(model_path: str, dataset_path: str, n_channels=
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
     # Load model and data
-    model = UNet(n_channels=n_channels).to(device)  # Single channel model
+    model = models.UNet(n_channels=n_channels).to(device)  # Single channel model
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
     

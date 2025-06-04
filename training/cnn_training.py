@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
-from models import RadarCNNMedium
+import models
 
 def train_cnn(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=100, save_path="cnn_model.pt", patience=20, scheduler=None):
     best_val_acc = 0.0
@@ -161,7 +161,7 @@ if __name__ == "__main__":
     dataset_pt = "data/20dB.pt"
     
     # Initialize CNN model with radar-optimized parameters
-    model = RadarCNNMedium(in_channels=1, num_classes=6, dropout_rate=0.5).to(device)
+    model = models.RadarCNNMedium(in_channels=1, num_classes=6, dropout_rate=0.5).to(device)
     model.load_state_dict(torch.load('pretrained/CNN-no_clutter-20dB.pt', map_location=device))
     
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)

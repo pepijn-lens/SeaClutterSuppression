@@ -27,19 +27,17 @@ import random
 
 import numpy as np
 
-from sea_clutter import animate_sequence, update_realistic_target_velocity, get_clutter_params_for_sea_state, create_realistic_target
-from sea_clutter import RadarParams, ClutterParams, SequenceParams, Target, RealisticTarget, TargetType
-from sea_clutter import add_target_blob, compute_range_doppler, simulate_sea_clutter
+import sea_clutter
 
 # ────────────────────────────────────────────────────────────────────────────────
 # Demo entry point (with moving blobs)
 # ────────────────────────────────────────────────────────────────────────────────
 
 def simulate_sequence_with_realistic_targets(
-    rp: RadarParams,
-    cp: ClutterParams,
-    sp: SequenceParams,
-    targets: List[RealisticTarget],
+    rp: sea_clutter.RadarParams,
+    cp: sea_clutter.ClutterParams,
+    sp: sea_clutter.SequenceParams,
+    targets: List[sea_clutter.RealisticTarget],
     random_roll: bool = False
 ) -> list[np.ndarray]:  # Return only RDMs
     """Simulate sequence with multiple realistic targets."""
@@ -56,24 +54,24 @@ def simulate_sequence_with_realistic_targets(
             shift_bins = int(round(cp.wave_speed_mps * dt / rp.range_resolution))
             texture = np.roll(texture, shift=shift_bins, axis=0)
             
-        clutter_td, texture, speckle_tail = simulate_sea_clutter(
+        clutter_td, texture, speckle_tail = sea_clutter.simulate_sea_clutter(
             rp, cp, texture=texture, init_speckle=speckle_tail
         )
 
         # Update and add each target
         for tgt in targets:
             # Update target velocity with realistic variations
-            update_realistic_target_velocity(tgt, rp)
+            sea_clutter.update_realistic_target_velocity(tgt, rp)
             
             # Convert to Target object for add_target_blob function
-            simple_target = Target(
+            simple_target = sea_clutter.Target(
                 rng_idx=tgt.rng_idx,
                 doppler_hz=tgt.doppler_hz,
                 power=tgt.power
             )
             
             # Add target to clutter data
-            add_target_blob(clutter_td, simple_target, rp)
+            sea_clutter.add_target_blob(clutter_td, simple_target, rp)
             
             # Update target range based on radial velocity
             range_change = tgt.current_velocity_mps * dt
@@ -81,7 +79,7 @@ def simulate_sequence_with_realistic_targets(
             tgt.rng_idx = int(np.clip(new_range / rp.range_resolution, 0, rp.n_ranges - 1))
         
         # Compute RD map
-        rdm = compute_range_doppler(clutter_td, rp, cp)
+        rdm = sea_clutter.compute_range_doppler(clutter_td, rp, cp)
 
         rdm = np.roll(rdm, shift=random_roll_bins, axis=1) if random_roll else rdm
 
@@ -89,10 +87,10 @@ def simulate_sequence_with_realistic_targets(
     
     return rdm_list
 
-def simulate_example_with_multiple_targets(save_gif: bool = False, cp = ClutterParams(), n_targets: int = 5) -> None:
-    rp = RadarParams()
+def simulate_example_with_multiple_targets(save_gif: bool = False, cp = sea_clutter.ClutterParams(), n_targets: int = 5) -> None:
+    rp = sea_clutter.RadarParams()
     cp = cp
-    sp = SequenceParams()  # Longer sequence to see movement
+    sp = sea_clutter.SequenceParams()  # Longer sequence to see movement
     min_range = int(round(20 * sp.n_frames/sp.frame_rate_hz/2))  # Minimum range for targets
     max_range = int(round(rp.n_ranges * rp.range_resolution - (20 * sp.n_frames/sp.frame_rate_hz)/2))  # Maximum range for targets
     
@@ -105,7 +103,7 @@ def simulate_example_with_multiple_targets(save_gif: bool = False, cp = ClutterP
     #     create_realistic_target(TargetType.SPEEDBOAT, random.randint(0, max_range), rp),
     # ]
     
-    targets = [create_realistic_target(TargetType.FIXED, random.randint(min_range, max_range), rp) for _ in range(n_targets)]
+    targets = [sea_clutter.create_realistic_target(sea_clutter.TargetType.FIXED, random.randint(min_range, max_range), rp) for _ in range(n_targets)]
 
     # Print target information
     print("Simulating targets:")
@@ -116,7 +114,7 @@ def simulate_example_with_multiple_targets(save_gif: bool = False, cp = ClutterP
     rdm_list = simulate_sequence_with_realistic_targets(rp, cp, sp, targets, random_roll=False)
     save_path = "sea_clutter_realistic_targets.gif" if save_gif else None
     interval_ms = int(1000.0 / sp.frame_rate_hz)
-    animate_sequence(rdm_list, rp, interval_ms=interval_ms, save_path=save_path)
+    sea_clutter.animate_sequence(rdm_list, rp, interval_ms=interval_ms, save_path=save_path)
 
 # ────────────────────────────────────────────────────────────────────────────────
 # Main entry point (argparse setup)
@@ -136,6 +134,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # grab clutter params for the requested sea state
-    cp = get_clutter_params_for_sea_state(args.state)
+    cp = sea_clutter.get_clutter_params_for_sea_state(args.state)
     
     simulate_example_with_multiple_targets(save_gif=args.gif, cp=cp)
