@@ -25,7 +25,7 @@ def count_ground_truth_targets(ground_truth_mask, min_area=3):
     gt_binary = (gt_mask > 0.5).astype(np.uint8)
     
     # Find connected components
-    num_labels, labels = cv2.connectedComponents(gt_binary.squeeze(0))
+    num_labels, labels = cv2.connectedComponents(gt_binary)
     
     # Count components that meet minimum area requirement
     valid_targets = 0
@@ -202,7 +202,7 @@ def evaluate_target_count_performance(model, data_loader, dataset_name="test"):
                     continue
                 
                 # Count ground truth targets using connected components
-                gt_count = count_ground_truth_targets(ground_truth_mask)
+                gt_count = count_ground_truth_targets(ground_truth_mask.squeeze(0))
                 
                 # Calculate errors
                 abs_error = abs(predicted_count - gt_count)

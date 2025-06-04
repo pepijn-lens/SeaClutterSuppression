@@ -3,18 +3,141 @@ import torch
 import numpy as np
 import random
 from tqdm import tqdm
-from parameters import RadarParams, ClutterParams, SequenceParams, TargetType, get_clutter_params_for_sea_state, create_realistic_target, Target, RealisticTarget
-from physics import add_target_blob, compute_range_doppler, simulate_sea_clutter
-from sea_helper import update_realistic_target_velocity
+import sea_clutter
 
 MIN_RANGE = 30  # Minimum range for targets
 MAX_RANGE = 128 - 30  # Maximum range for targets
 
+def generate_single_frame_with_targets(
+    rp: sea_clutter.RadarParams,
+    cp: sea_clutter.ClutterParams,
+    n_targets: int,
+) -> np.ndarray:
+    """Generate a single range-Doppler map with specified number of targets."""
+    
+    # Generate sea clutter
+    clutter_td, _, _ = sea_clutter.simulate_sea_clutter(rp, cp)
+    
+    # Generate random targets if needed
+    if n_targets > 0:
+        max_range = rp.n_ranges * rp.range_resolution
+        targets = [
+            sea_clutter.create_realistic_target(sea_clutter.TargetType.FIXED, random.randint(0, max_range-1), rp) 
+            for _ in range(n_targets)
+        ]
+        
+        # Add each target to the clutter data
+        for tgt in targets:
+            simple_target = sea_clutter.Target(
+                rng_idx=tgt.rng_idx,
+                doppler_hz=tgt.doppler_hz,
+                power=tgt.power
+            )
+            sea_clutter.add_target_blob(clutter_td, simple_target, rp)
+    
+    # Compute range-Doppler map
+    rdm = sea_clutter.compute_range_doppler(clutter_td, rp, cp)
+    
+    return rdm
+
+def generate_classification_dataset(
+    samples_per_class: int = 2000,
+    max_targets: int = 5,
+    sea_state: int = 5,
+    save_path: str = "sea_clutter_classification_dataset.pt"
+) -> None:
+    """
+    Generate dataset for target count classification.
+    
+    Args:
+        samples_per_class: Number of samples to generate per class
+        max_targets: Maximum number of targets (classes will be 0 to max_targets)
+        sea_state: WMO sea state to use
+        save_path: Path to save the PyTorch file
+    """
+    
+    # Initialize parameters
+    rp = sea_clutter.RadarParams()
+    cp = sea_clutter.get_clutter_params_for_sea_state(sea_state)
+    
+    # Set single frame
+    sp = sea_clutter.SequenceParams()
+    
+    print(f"Generating dataset with {samples_per_class} samples per class")
+    print(f"Classes: 0 to {max_targets} targets")
+    print(f"Sea state: {sea_state}")
+    print(f"Range-Doppler map size: {rp.n_ranges} x {rp.n_pulses}")
+    
+    # Storage for data and labels
+    all_images = []
+    all_labels = []
+    
+    # Generate data for each class
+    for n_targets in range(max_targets + 1):
+        print(f"\nGenerating {samples_per_class} samples for {n_targets} targets...")
+        
+        class_images = []
+        class_labels = []
+        
+        for i in tqdm(range(samples_per_class), desc=f"Class {n_targets}"):
+            # Generate single RDM
+            rdm = generate_single_frame_with_targets(rp, cp, n_targets)
+
+            # to dB scale and normalize with mean and std
+            rdm = 20 * np.log10(np.abs(rdm) + 1e-10)  # Avoid log(0)
+            rdm = (rdm - np.mean(rdm)) / np.std(rdm) + 1e-10
+
+            # plt.figure()
+            # plt.imshow(rdm, aspect='auto', origin='lower', cmap='viridis')
+            # plt.show()
+
+            # Store image and label
+            class_images.append(rdm)
+            class_labels.append(n_targets)
+        
+        all_images.extend(class_images)
+        all_labels.extend(class_labels)
+    
+    # Convert to numpy arrays
+    images = np.array(all_images)  # Shape: (total_samples, n_ranges, n_doppler_bins)
+    labels = np.array(all_labels)  # Shape: (total_samples,)
+    
+    print(f"\nDataset generated!")
+    print(f"Total samples: {len(images)}")
+    print(f"Image shape: {images.shape}")
+    print(f"Labels shape: {labels.shape}")
+    
+    # Convert to PyTorch tensors
+    images_tensor = torch.from_numpy(images).float()
+    labels_tensor = torch.from_numpy(labels).long()
+    
+    # Create dataset dictionary
+    dataset = {
+        'images': images_tensor,
+        'labels': labels_tensor,
+        'metadata': {
+            'samples_per_class': samples_per_class,
+            'max_targets': max_targets,
+            'sea_state': sea_state,
+            'n_ranges': rp.n_ranges,
+            'n_doppler_bins': rp.n_pulses,
+            'range_resolution': rp.range_resolution,
+            'class_names': [f"{i}_targets" for i in range(max_targets + 1)]
+        }
+    }
+    
+    # Save to file
+    torch.save(dataset, save_path)
+    print(f"\nDataset saved to: {save_path}")
+    print(f"File size: {torch.load(save_path)['images'].element_size() * torch.load(save_path)['images'].nelement() / (1024**2):.1f} MB")
+
+
+
 def simulate_sequence_with_realistic_targets_and_masks(
-    rp: RadarParams,
-    cp: ClutterParams,
-    sp: SequenceParams,
-    targets: List[RealisticTarget],
+    rp: sea_clutter.RadarParams,
+    cp: sea_clutter.ClutterParams,
+    sp: sea_clutter.SequenceParams,
+    targets: List[sea_clutter.RealisticTarget],
     random_roll: bool = True
 ) -> tuple[list[np.ndarray], list[np.ndarray]]:  # Return RDMs and masks
     """Simulate sequence with multiple realistic targets and generate corresponding masks."""
@@ -33,7 +156,7 @@ def simulate_sequence_with_realistic_targets_and_masks(
             shift_bins = int(round(cp.wave_speed_mps * dt / rp.range_resolution))
             texture = np.roll(texture, shift=shift_bins, axis=0)
             
-        clutter_td, texture, speckle_tail = simulate_sea_clutter(
+        clutter_td, texture, speckle_tail = sea_clutter.simulate_sea_clutter(
             rp, cp, texture=texture, init_speckle=speckle_tail
         )
         
@@ -43,17 +166,17 @@ def simulate_sequence_with_realistic_targets_and_masks(
         # Update and add each target
         for tgt in targets:
             # Update target velocity with realistic variations
-            update_realistic_target_velocity(tgt, rp)
+            sea_clutter.update_realistic_target_velocity(tgt, rp)
             
             # Convert to Target object for add_target_blob function
-            simple_target = Target(
+            simple_target = sea_clutter.Target(
                 rng_idx=tgt.rng_idx,
                 doppler_hz=tgt.doppler_hz,
                 power=tgt.power
             )
             
             # Add target to clutter data
-            add_target_blob(clutter_td, simple_target, rp)
+            sea_clutter.add_target_blob(clutter_td, simple_target, rp)
             
             # Mark target location in binary mask
             # Convert Doppler frequency to bin index
@@ -72,7 +195,7 @@ def simulate_sequence_with_realistic_targets_and_masks(
             tgt.rng_idx = int(np.clip(new_range / rp.range_resolution, 0, rp.n_ranges - 1))
         
         # Compute RD map
-        rdm = compute_range_doppler(clutter_td, rp, cp)
+        rdm = sea_clutter.compute_range_doppler(clutter_td, rp, cp)
 
         # Apply same roll to both RDM and mask
         if random_roll:
@@ -103,11 +226,11 @@ def generate_segmentation_dataset_with_sequences(
     """
     
     # Initialize parameters
-    rp = RadarParams()
-    cp = get_clutter_params_for_sea_state(sea_state)
+    rp = sea_clutter.RadarParams()
+    cp = sea_clutter.get_clutter_params_for_sea_state(sea_state)
     
     # Set sequence parameters
-    sp = SequenceParams()
+    sp = sea_clutter.SequenceParams()
     sp.n_frames = n_frames
     
     print(f"Generating segmentation dataset with {samples_per_class} sequences per class")
@@ -130,8 +253,8 @@ def generate_segmentation_dataset_with_sequences(
             targets = []
             if n_targets > 0:
                 for _ in range(n_targets):
-                    target = create_realistic_target(
-                        TargetType.FIXED, 
+                    target = sea_clutter.create_realistic_target(
+                        sea_clutter.TargetType.FIXED, 
                         random.randint(MIN_RANGE, MAX_RANGE), 
                         rp
                     )
@@ -205,26 +328,6 @@ def generate_segmentation_dataset_with_sequences(
 
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="Generate sea clutter sequence segmentation dataset")
-    parser.add_argument("--samples", type=int, default=1000, 
-                        help="Number of samples per class (default: 2000)")
-    parser.add_argument("--max-targets", type=int, default=10,
-                        help="Maximum number of targets (default: 5)")
-    parser.add_argument("--sea-state", type=int, choices=[1,3,5,7,9], default=5,
-                        help="WMO sea state (default: 5)")
-    parser.add_argument("--frames", type=int, default=5,
-                        help="Number of frames per sequence (default: 3)")
-    parser.add_argument("--output", type=str, default="data/sea_clutter_segmentation_5sequences.pt",
-                        help="Output file path (default: data/sea_clutter_segmentation_3_frames.pt)")
-
-    args = parser.parse_args()
-
-    generate_segmentation_dataset_with_sequences(
-        samples_per_class=args.samples,
-        max_targets=args.max_targets,
-        sea_state=args.sea_state,
-        n_frames=args.frames,
-        save_path=args.output
-    )
+    # Example usage
+    generate_classification_dataset(samples_per_class=100, max_targets=5, sea_state=5, save_path="sea_clutter_classification_dataset.pt")
+    generate_segmentation_dataset_with_sequences(samples_per_class=50, max_targets=3, sea_state=5, n_frames=5, save_path="sea_clutter_segmentation_sequences.pt")

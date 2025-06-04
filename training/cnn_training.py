@@ -1,57 +1,10 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
 import time
 import matplotlib.pyplot as plt
 import os
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
-# Alternative version if you need more capacity but still want efficiency
-class RadarCNNMedium(nn.Module):
-    def __init__(self, in_channels=1, num_classes=10, dropout_rate=0.5):
-        super(RadarCNNMedium, self).__init__()
-        
-        # Convolutional layers
-        self.conv1 = nn.Conv2d(in_channels, 32, kernel_size=5, padding=2)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
-        
-        # Batch normalization layers
-        self.bn1 = nn.BatchNorm2d(32)
-        self.bn2 = nn.BatchNorm2d(64)
-        self.bn3 = nn.BatchNorm2d(128)
-        
-        # Pooling layer
-        self.pool = nn.MaxPool2d(2, 2)
-        
-        # Dropout layer
-        self.dropout = nn.Dropout(dropout_rate)
-        
-        # Smaller adaptive pooling
-        self.adaptive_pool = nn.AdaptiveAvgPool2d((2, 2))
-        
-        # Reasonably sized fully connected layers
-        self.fc1 = nn.Linear(128 * 2 * 2, 256)
-        self.fc2 = nn.Linear(256, 64)
-        self.fc3 = nn.Linear(64, num_classes)
-        
-    def forward(self, x):
-        # Convolutional layers with batch norm and pooling
-        x = self.pool(torch.relu(self.bn1(self.conv1(x))))
-        x = self.pool(torch.relu(self.bn2(self.conv2(x))))
-        x = self.pool(torch.relu(self.bn3(self.conv3(x))))
-        
-        # Adaptive pooling and flatten
-        x = self.adaptive_pool(x)
-        x = torch.flatten(x, 1)
-        
-        # Fully connected layers
-        x = self.dropout(torch.relu(self.fc1(x)))
-        x = self.dropout(torch.relu(self.fc2(x)))
-        x = self.fc3(x)
-        
-        return x
+from models import RadarCNNMedium
 
 def train_cnn(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=100, save_path="cnn_model.pt", patience=20, scheduler=None):
     best_val_acc = 0.0
@@ -119,7 +72,7 @@ def train_cnn(model, train_loader, val_loader, criterion, optimizer, device, num
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             best_epoch = epoch + 1
-            torch.save(model.state_dict(), f'models/{save_path}')
+            torch.save(model.state_dict(), f'pretrained/{save_path}')
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
@@ -200,7 +153,7 @@ def analyze_cnn(model, dataloader, device, class_names=None, max_misclassified=1
 
 if __name__ == "__main__":
     # Import necessary functions from Classification.py
-    from Classification import RadarDataset, load_dataloaders, get_cosine_schedule_with_warmup
+    from training.swin_training import RadarDataset, load_dataloaders, get_cosine_schedule_with_warmup
     
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     
@@ -209,7 +162,7 @@ if __name__ == "__main__":
     
     # Initialize CNN model with radar-optimized parameters
     model = RadarCNNMedium(in_channels=1, num_classes=6, dropout_rate=0.5).to(device)
-    model.load_state_dict(torch.load('models/CNN-no_clutter-20dB.pt', map_location=device))
+    model.load_state_dict(torch.load('pretrained/CNN-no_clutter-20dB.pt', map_location=device))
     
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f'CNN: {trainable_params:,} trainable parameters')

@@ -3,8 +3,8 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 import pandas as pd 
-from training.new_swin import radar_swin_t
-from training.Classification import RadarDataset
+from models.swin_transformer import radar_swin_t
+from training.swin_training import RadarDataset
 
 
 
@@ -163,7 +163,7 @@ def plot_attention(attn_map, head=0, window_idx=0):
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model_name = "/Users/pepijnlens/Documents/transformers/models/multiframe_sea_monster.pt"
+    model_name = "/Users/pepijnlens/Documents/transformers/pretrained/multiframe_sea_monster.pt"
     dataset_name = "sea_clutter-4_frames-25SCR.pt"
 
     model = radar_swin_t(

@@ -1,6 +1,6 @@
 env/
 data/
-models/
+pretrained/
 .venv/
 
 

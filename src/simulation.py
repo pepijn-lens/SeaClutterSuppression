@@ -27,9 +27,9 @@ import random
 
 import numpy as np
 
-from sea_helper import animate_sequence, update_realistic_target_velocity
-from parameters import RadarParams, ClutterParams, SequenceParams, Target, RealisticTarget, TargetType, get_clutter_params_for_sea_state, create_realistic_target
-from physics import add_target_blob, compute_range_doppler, simulate_sea_clutter
+from sea_clutter import animate_sequence, update_realistic_target_velocity, get_clutter_params_for_sea_state, create_realistic_target
+from sea_clutter import RadarParams, ClutterParams, SequenceParams, Target, RealisticTarget, TargetType
+from sea_clutter import add_target_blob, compute_range_doppler, simulate_sea_clutter
 
 # ────────────────────────────────────────────────────────────────────────────────
 # Demo entry point (with moving blobs)
@@ -89,7 +89,7 @@ def simulate_sequence_with_realistic_targets(
     
     return rdm_list
 
-def simulate_example_with_multiple_targets(save_gif: bool = False, cp = ClutterParams()) -> None:
+def simulate_example_with_multiple_targets(save_gif: bool = False, cp = ClutterParams(), n_targets: int = 5) -> None:
     rp = RadarParams()
     cp = cp
     sp = SequenceParams()  # Longer sequence to see movement
@@ -105,7 +105,7 @@ def simulate_example_with_multiple_targets(save_gif: bool = False, cp = ClutterP
     #     create_realistic_target(TargetType.SPEEDBOAT, random.randint(0, max_range), rp),
     # ]
     
-    targets = [create_realistic_target(TargetType.FIXED, random.randint(min_range, max_range), rp) for _ in range(10)]
+    targets = [create_realistic_target(TargetType.FIXED, random.randint(min_range, max_range), rp) for _ in range(n_targets)]
 
     # Print target information
     print("Simulating targets:")
@@ -130,6 +130,8 @@ if __name__ == "__main__":
     parser.add_argument("--state", type=int, choices=[1,3,5,7,9],
                         default=5,
                         help="WMO sea state (1,3,5,7,9).")
+    parser.add_argument("--n-targets", type=int, default=5,
+                        help="Number of targets to simulate (default: 5).")
     
     args = parser.parse_args()
     

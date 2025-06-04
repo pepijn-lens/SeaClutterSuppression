@@ -54,12 +54,12 @@ python reproduce.py generate --samples 1000 --max-targets 5 --sea-state 5 --fram
 
 Train the model:
 ```bash
-python reproduce.py train-unet data/dataset.pt --epochs 30 --batch-size 16 --output models/unet.pt
+python reproduce.py train-unet data/dataset.pt --epochs 30 --batch-size 16 --output pretrained/unet.pt
 ```
 
 Start the interactive explorer:
 ```bash
-python reproduce.py detect data/dataset.pt models/unet.pt --interactive
+python reproduce.py detect data/dataset.pt pretrained/unet.pt --interactive
 ```
 
 

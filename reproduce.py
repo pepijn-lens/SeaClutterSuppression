@@ -1,7 +1,7 @@
 import argparse
 
-from sea_clutter.generate_data_with_mask import generate_segmentation_dataset
-from sea_clutter.generate_multi_frame_data import generate_segmentation_dataset_with_sequences
+from sea_clutter.generate_data import generate_segmentation_dataset
+from sea_clutter.generate_data import generate_segmentation_dataset_with_sequences
 from training.unet_training import train_model
 from training.end_to_end import EndToEndTargetDetector, interactive_sample_explorer
 
@@ -61,7 +61,7 @@ def main():
     train.add_argument("--batch-size", type=int, default=16)
     train.add_argument("--lr", type=float, default=1e-4)
     train.add_argument("--pretrained", type=str, default=None)
-    train.add_argument("--output", type=str, default="models/unet.pt")
+    train.add_argument("--output", type=str, default="pretrained/unet.pt")
     train.set_defaults(func=train_unet)
 
     detect = subparsers.add_parser("detect", help="Build end-to-end detector")

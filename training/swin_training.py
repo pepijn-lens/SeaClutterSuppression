@@ -1,4 +1,4 @@
-from new_swin import radar_swin_t, swin_t
+from models import radar_swin_t, swin_t
 import os
 import torch
 from torch.utils.data import Dataset, random_split, DataLoader
@@ -69,7 +69,6 @@ class RadarDataset(Dataset):
     def get_metadata(self):
         """Return dataset metadata for reference."""
         return self.metadata
-    
     
 def load_dataloaders(root_dir="data/20dB", batch_size=32, num_workers=0,random_seed=42):
     dataset = RadarDataset(data_path=root_dir)
@@ -154,7 +153,7 @@ def train(model, train_loader, val_loader, criterion, optimizer, device, num_epo
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             best_epoch = epoch + 1
-            torch.save(model.state_dict(), f'models/{save_path}')
+            torch.save(model.state_dict(), f'pretrained/{save_path}')
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
@@ -164,7 +163,6 @@ def train(model, train_loader, val_loader, criterion, optimizer, device, num_epo
                 print(f"🛑 Early stopping triggered after {patience} epochs without improvement.")
                 print(f"🔁 Best model was from epoch {best_epoch} with Val Acc: {best_val_acc:.2f}%")
                 break
-
 
 def evaluate(model, test_loader, device):
     model.eval()
@@ -234,17 +232,6 @@ def analyze_model(model, dataloader, device, class_names=None, max_misclassified
             plt.savefig(dir + f"/misclassified_{i+1}.png", dpi=500)
             plt.close()
 
-# Set up logging
-optuna.logging.set_verbosity(optuna.logging.INFO)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler("optuna_search.log"),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger("optuna_search")
 
 def objective(trial, dataset_pth="data/30dB.pt"):
     layers = trial.suggest_categorical("layers", [6, 8])
@@ -257,8 +244,6 @@ def objective(trial, dataset_pth="data/30dB.pt"):
     elif hidden_dim == 512:
         heads = 16
     head_dim = hidden_dim // heads
-
-    logger.info(f"Trial {trial.number}: layers={layers}, window_size={window_size}, patch_size={patch_size}, heads={heads}, head_dim={head_dim}, weight decay={weight_decay}, dataset={dataset_pth}")
 
     model = radar_swin_t(
         in_channels=4,
@@ -283,9 +268,8 @@ def objective(trial, dataset_pth="data/30dB.pt"):
     )
     train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=100, save_path=f"optuna_trial_{trial.number}.pt", patience=8, scheduler=scheduler)
 
-    model.load_state_dict(torch.load(f"models/optuna_trial_{trial.number}.pt"))
+    model.load_state_dict(torch.load(f"pretrained/optuna_trial_{trial.number}.pt"))
     val_acc = evaluate(model, val_loader, device)
-    logger.info(f"Trial {trial.number} finished with val_acc={val_acc:.4f}")
     return val_acc
 
 def get_cosine_schedule_with_warmup(optimizer, warmup_steps, total_steps, min_lr_ratio=0.0):
@@ -315,7 +299,7 @@ if __name__ == "__main__":
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
     # model_name = "8patch-medium.pt"
-    model_name = "swin_no_clutter.pt"
+    model_name = "tiny_swin_no_clutter_20dB.pt"
     dataset_pt = "data/20dB.pt"
     
     # study = optuna.create_study(direction="maximize")
@@ -339,7 +323,7 @@ if __name__ == "__main__":
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f'{trainable_params:,} trainable parameters')
 
-    model.load_state_dict(torch.load(f'models/{model_name}'))  # Load pre-trained model if available
+    model.load_state_dict(torch.load(f'pretrained/{model_name}'))  # Load pre-trained model if available
 
     train_loader, val_loader, test_loader = load_dataloaders(batch_size=64, root_dir=dataset_pt, random_seed=6)
 
