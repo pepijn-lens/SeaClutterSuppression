@@ -328,6 +328,27 @@ def generate_segmentation_dataset_with_sequences(
 
 
 if __name__ == "__main__":
-    # Example usage
-    generate_classification_dataset(samples_per_class=100, max_targets=5, sea_state=5, save_path="sea_clutter_classification_dataset.pt")
-    generate_segmentation_dataset_with_sequences(samples_per_class=50, max_targets=3, sea_state=5, n_frames=5, save_path="sea_clutter_segmentation_sequences.pt")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Generate synthetic sea clutter datasets")
+    parser.add_argument("--samples", type=int, default=500,
+                        help="Number of sequences to generate for each class")
+    parser.add_argument("--max-targets", type=int, default=10,
+                        help="Maximum number of targets present in the RD map")
+    parser.add_argument("--sea-state", type=int, default=5,
+                        help="WMO sea state used for the simulation")
+    parser.add_argument("--frames", type=int, default=3,
+                        help="Number of frames per sequence")
+    parser.add_argument("--save-path", type=str,
+                        default="sea_clutter_segmentation_sequences.pt",
+                        help="Path where the generated dataset will be saved")
+
+    args = parser.parse_args()
+
+    generate_segmentation_dataset_with_sequences(
+        samples_per_class=args.samples,
+        max_targets=args.max_targets,
+        sea_state=args.sea_state,
+        n_frames=args.frames,
+        save_path=args.save_path,
+    )

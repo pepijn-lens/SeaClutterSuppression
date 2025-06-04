@@ -351,11 +351,42 @@ def comprehensive_model_analysis(model_path: str, dataset_path: str, n_channels=
 
 
 if __name__ == "__main__":
-    type = 'single'
-    dataset_file = f"data/sea_clutter_{type}_frame.pt"
-    model_file = f"pretrained/unet_{type}_frame.pt"
-    
-    train_model(dataset_file, n_channels=1, num_epochs=50, batch_size=16, lr=1e-4, model_save_path=model_file)
-    
-    # Comprehensive analysis
-    df, stats = comprehensive_model_analysis(model_file, dataset_file, n_channels=1, save_dir=type)
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Train a U-Net segmentation model")
+    parser.add_argument("--dataset-path", type=str, required=True,
+                        help="Path to the training dataset")
+    parser.add_argument("--n-channels", type=int, default=3,
+                        help="Number of input channels of the model")
+    parser.add_argument("--pretrained", type=str, default=None,
+                        help="Path to pretrained model weights (optional)")
+    parser.add_argument("--epochs", type=int, default=30,
+                        help="Number of training epochs")
+    parser.add_argument("--lr", type=float, default=1e-4,
+                        help="Learning rate")
+    parser.add_argument("--batch-size", type=int, default=16,
+                        help="Training batch size")
+    parser.add_argument("--patience", type=int, default=10,
+                        help="Early stopping patience")
+    parser.add_argument("--model-save-path", type=str, default="unet_model.pt",
+                        help="Where to save the trained model")
+
+    args = parser.parse_args()
+
+    train_model(
+        dataset_path=args.dataset_path,
+        n_channels=args.n_channels,
+        num_epochs=args.epochs,
+        patience=args.patience,
+        batch_size=args.batch_size,
+        lr=args.lr,
+        pretrained=args.pretrained,
+        model_save_path=args.model_save_path,
+    )
+
+    comprehensive_model_analysis(
+        args.model_save_path,
+        args.dataset_path,
+        n_channels=args.n_channels,
+        save_dir="analysis",
+    )
