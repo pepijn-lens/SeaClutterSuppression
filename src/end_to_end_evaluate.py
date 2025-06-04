@@ -5,7 +5,7 @@ from sea_clutter import create_data_loaders
 from .end_to_end_helper import plot_performance_analysis, print_performance_report, evaluate_target_count_performance, show_dataset_stats, analyze_single_sample
 import models
 
-def comprehensive_evaluation(dataset_path, model_path, save= 'multi_frame'):
+def comprehensive_evaluation(dataset_path, model_path, save='multi_frame', clustering_params=None):
     """Run a comprehensive evaluation of the end-to-end model using test data"""
     
     # Create data loaders same as in training
@@ -37,12 +37,8 @@ def comprehensive_evaluation(dataset_path, model_path, save= 'multi_frame'):
     model = models.EndToEndTargetDetector(
         unet_weights_path=model_path,
         n_channels=n_channels,
-        clustering_params={
-            'min_area': 3,
-            'eps': 1,
-            'min_samples': 1
-        }
-    ).to('mps')  # Move model to MPS 
+        clustering_params=clustering_params or {'min_area': 3, 'eps': 1, 'min_samples': 1}
+    ).to('mps')  # Move model to MPS
     
     # Evaluate performance on test data
     print("Running comprehensive evaluation on test data...")
@@ -56,7 +52,7 @@ def comprehensive_evaluation(dataset_path, model_path, save= 'multi_frame'):
     
     return results
 
-def interactive_sample_explorer(dataset_path, model_path):
+def interactive_sample_explorer(dataset_path, model_path, clustering_params=None):
     """
     Interactive method to explore samples from the dataset using the end-to-end target detector
     """
@@ -82,11 +78,7 @@ def interactive_sample_explorer(dataset_path, model_path):
     model = models.EndToEndTargetDetector(
         unet_weights_path=model_path,
         n_channels=n_channels,
-        clustering_params={
-            'min_area': 3,
-            'eps': 1,
-            'min_samples': 1
-        }
+        clustering_params=clustering_params or {'min_area': 3, 'eps': 1, 'min_samples': 1}
     )
     
     print(f"Model loaded with {n_channels} input channels")
@@ -137,12 +129,36 @@ def interactive_sample_explorer(dataset_path, model_path):
             continue
 
 if __name__ == "__main__":
-    dataset = 'data/sea_clutter_single_frame.pt'
-    model = 'pretrained/unet_single_frame.pt'
-    
-    print("Running comprehensive end-to-end performance evaluation on 3-channel sequence data...")
-    # Run comprehensive evaluation on the 3-frame U-Net with the specified dataset
-    results = comprehensive_evaluation(dataset, model, save='single_frame')
+    import argparse
 
-    print("Starting interactive sample explorer...")
-    interactive_sample_explorer(dataset, model)
+    parser = argparse.ArgumentParser(description="Evaluate the end-to-end detector")
+    parser.add_argument("--dataset", type=str, required=True, help="Path to the evaluation dataset")
+    parser.add_argument("--model", type=str, required=True, help="Path to the trained U-Net weights")
+    parser.add_argument("--save-path", type=str, default="end_to_end_results",
+                        help="Directory where evaluation figures will be saved")
+    parser.add_argument("--cluster-min-area", type=int, default=3, help="Minimum area for a cluster to be valid")
+    parser.add_argument("--cluster-eps", type=float, default=1.0, help="DBSCAN eps parameter")
+    parser.add_argument("--cluster-min-samples", type=int, default=1, help="DBSCAN min_samples parameter")
+    parser.add_argument("--interactive", action="store_true", help="Launch interactive sample explorer after evaluation")
+
+    args = parser.parse_args()
+
+    clustering = {
+        'min_area': args.cluster_min_area,
+        'eps': args.cluster_eps,
+        'min_samples': args.cluster_min_samples,
+    }
+
+    comprehensive_evaluation(
+        args.dataset,
+        args.model,
+        save=args.save_path,
+        clustering_params=clustering,
+    )
+
+    if args.interactive:
+        interactive_sample_explorer(
+            args.dataset,
+            args.model,
+            clustering_params=clustering,
+        )
