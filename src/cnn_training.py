@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import os
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
+from .swin_training import load_dataloaders, get_cosine_schedule_with_warmup
 import models
 
 def train_cnn(model, train_loader, val_loader, criterion, optimizer, device, num_epochs=100, save_path="cnn_model.pt", patience=20, scheduler=None):
@@ -152,9 +153,6 @@ def analyze_cnn(model, dataloader, device, class_names=None, max_misclassified=1
         plt.savefig(dir + f"/misclassified_{i+1}.png", dpi=500)
 
 if __name__ == "__main__":
-    # Import necessary functions from Classification.py
-    from training.swin_training import RadarDataset, load_dataloaders, get_cosine_schedule_with_warmup
-    
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     
     model_name = "CNN-no_clutter-20dB.pt"

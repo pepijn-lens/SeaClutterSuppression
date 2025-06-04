@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 import pandas as pd 
 
 import models
-from training import RadarDataset
+from .swin_training import RadarDataset
 
 c0 = 299792458
 
