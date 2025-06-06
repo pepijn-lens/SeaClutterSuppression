@@ -15,6 +15,34 @@ import models
 # ---------------------------
 # 2. Metrics
 # ---------------------------
+class DiceLoss(nn.Module):
+    def __init__(self, smooth=1.):
+        super(DiceLoss, self).__init__()
+        self.smooth = smooth
+    
+    def forward(self, pred, target):
+        pred = torch.sigmoid(pred)
+        pred_flat = pred.view(-1)
+        target_flat = target.view(-1)
+        
+        intersection = (pred_flat * target_flat).sum()
+        dice = (2. * intersection + self.smooth) / (pred_flat.sum() + target_flat.sum() + self.smooth)
+        
+        return 1 - dice
+
+class CombinedLoss(nn.Module):
+    def __init__(self, bce_weight=1.0, dice_weight=1.0):
+        super(CombinedLoss, self).__init__()
+        self.bce_loss = nn.BCEWithLogitsLoss()
+        self.dice_loss = DiceLoss()
+        self.bce_weight = bce_weight
+        self.dice_weight = dice_weight
+    
+    def forward(self, pred, target):
+        bce = self.bce_loss(pred, target)
+        dice = self.dice_loss(pred, target)
+        return self.bce_weight * bce + self.dice_weight * dice
+
 def dice_coeff(pred, target, smooth=1.):
     pred = torch.sigmoid(pred).detach().cpu().numpy() > 0.5
     target = target.cpu().numpy()
@@ -40,7 +68,7 @@ def evaluate(model, loader, device) -> Tuple[float, float, float]:
 # ---------------------------
 # 3. Training Loop
 # ---------------------------
-def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, batch_size=16, lr=1e-4, pretrained=None, model_save_path='unet_single_frame.pt'):
+def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, batch_size=16, lr=1e-4, pretrained=None, model_save_path='unet_single_frame.pt', bce_weight=1.0, dice_weight=1.0):
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
 
@@ -55,12 +83,14 @@ def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, b
     if pretrained:
         model.load_state_dict(torch.load(pretrained, map_location=device))
         print(f"Loaded pretrained model from {pretrained}")
-    criterion = nn.BCEWithLogitsLoss()
+    criterion = CombinedLoss(bce_weight=bce_weight, dice_weight=dice_weight)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     # Early stopping variables
     best_dice = 0.0
     patience_counter = 0
+
+    print(f"Using combined loss: BCE weight={bce_weight}, Dice weight={dice_weight}")
 
     for epoch in range(num_epochs):
         model.train()
@@ -104,9 +134,7 @@ def comprehensive_model_analysis(model_path: str, dataset_path: str, n_channels=
     Comprehensive model performance analysis with multiple visualizations.
     """
     import pandas as pd
-    
-    os.makedirs(f'u_net_analysis/{save_dir}', exist_ok=True)
-    
+        
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
     # Load model and data
@@ -344,7 +372,7 @@ def comprehensive_model_analysis(model_path: str, dataset_path: str, n_channels=
                 f.write(f"{stat_name}: {value:.4f}\n")
             f.write("\n")
     
-    print(f"Single channel model analysis saved to {save_dir}/")
+    print(f"{save_dir} model analysis saved to {save_dir}/")
     return df, summary_stats
 
 
@@ -368,6 +396,10 @@ if __name__ == "__main__":
                         help="Early stopping patience")
     parser.add_argument("--model-save-path", type=str, default="pretrained/test_model.pt",
                         help="Where to save the trained model")
+    parser.add_argument("--bce-weight", type=float, default=1.0,
+                        help="Weight for BCE loss in combined loss")
+    parser.add_argument("--dice-weight", type=float, default=1.0,
+                        help="Weight for Dice loss in combined loss")
 
     args = parser.parse_args()
 
@@ -380,6 +412,8 @@ if __name__ == "__main__":
         lr=args.lr,
         pretrained=args.pretrained,
         model_save_path=args.model_save_path,
+        bce_weight=args.bce_weight,
+        dice_weight=args.dice_weight,
     )
 
     comprehensive_model_analysis(

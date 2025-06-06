@@ -149,12 +149,12 @@ if __name__ == "__main__":
         'min_samples': args.cluster_min_samples,
     }
 
-    comprehensive_evaluation(
-        args.dataset,
-        args.model,
-        save=args.save_path,
-        clustering_params=clustering,
-    )
+    # comprehensive_evaluation(
+    #     args.dataset,
+    #     args.model,
+    #     save=args.save_path,
+    #     clustering_params=clustering,
+    # )
 
     if args.interactive:
         interactive_sample_explorer(
