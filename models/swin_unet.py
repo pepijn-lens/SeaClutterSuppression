@@ -131,12 +131,13 @@ class FinalPatchExpand(nn.Module):
 
 class SwinEncoderLayer(nn.Module):
     """Swin Transformer Encoder Layer with downsampling"""
-    def __init__(self, input_resolution, dim, num_heads, window_size=7, 
+    def __init__(self, input_resolution, dim, depth, num_heads, window_size=7, 
                  shift_size=0, mlp_ratio=4., drop=0., attn_drop=0., 
                  drop_path=0., norm_layer=nn.LayerNorm, downsample=None):
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
+        self.depth = depth
         self.num_heads = num_heads
         self.window_size = window_size
         self.shift_size = shift_size
@@ -148,25 +149,20 @@ class SwinEncoderLayer(nn.Module):
             self.window_size = min(self.input_resolution)
         assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
 
-        self.swin_block1 = SwinBlock(
-            dim=dim,
-            heads=num_heads,
-            head_dim=dim // num_heads,
-            mlp_dim=int(dim * mlp_ratio),
-            shifted=False,
-            window_size=window_size,
-            relative_pos_embedding=True
-        )
-        
-        self.swin_block2 = SwinBlock(
-            dim=dim,
-            heads=num_heads,
-            head_dim=dim // num_heads,
-            mlp_dim=int(dim * mlp_ratio),
-            shifted=True,
-            window_size=window_size,
-            relative_pos_embedding=True
-        )
+        # Create list of Swin blocks based on depth
+        self.blocks = nn.ModuleList()
+        for i in range(depth):
+            self.blocks.append(
+                SwinBlock(
+                    dim=dim,
+                    heads=num_heads,
+                    head_dim=dim // num_heads,
+                    mlp_dim=int(dim * mlp_ratio),
+                    shifted=(i % 2 == 1),  # Alternate between regular and shifted windows
+                    window_size=window_size,
+                    relative_pos_embedding=True
+                )
+            )
 
         # patch merging layer
         if downsample is not None:
@@ -187,8 +183,8 @@ class SwinEncoderLayer(nn.Module):
         x = x.view(B, H, W, C)
         
         # apply Swin transformer blocks
-        x = self.swin_block1(x)
-        x = self.swin_block2(x)
+        for block in self.blocks:
+            x = block(x)
         
         # reshape back to (B, L, C)
         x = x.view(B, H * W, C)
@@ -201,12 +197,13 @@ class SwinEncoderLayer(nn.Module):
 
 class SwinDecoderLayer(nn.Module):
     """Swin Transformer Decoder Layer with upsampling"""
-    def __init__(self, input_resolution, dim, num_heads, window_size=7,
+    def __init__(self, input_resolution, dim, depth, num_heads, window_size=7,
                  shift_size=0, mlp_ratio=4., drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, upsample=None):
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
+        self.depth = depth
         self.num_heads = num_heads
         self.window_size = window_size
         self.shift_size = shift_size
@@ -228,25 +225,20 @@ class SwinDecoderLayer(nn.Module):
         else:
             self.upsample = None
 
-        self.swin_block1 = SwinBlock(
-            dim=dim,
-            heads=num_heads,
-            head_dim=dim // num_heads,
-            mlp_dim=int(dim * mlp_ratio),
-            shifted=False,
-            window_size=window_size,
-            relative_pos_embedding=True
-        )
-        
-        self.swin_block2 = SwinBlock(
-            dim=dim,
-            heads=num_heads,
-            head_dim=dim // num_heads,
-            mlp_dim=int(dim * mlp_ratio),
-            shifted=True,
-            window_size=window_size,
-            relative_pos_embedding=True
-        )
+        # Create list of Swin blocks based on depth
+        self.blocks = nn.ModuleList()
+        for i in range(depth):
+            self.blocks.append(
+                SwinBlock(
+                    dim=dim,
+                    heads=num_heads,
+                    head_dim=dim // num_heads,
+                    mlp_dim=int(dim * mlp_ratio),
+                    shifted=(i % 2 == 1),  # Alternate between regular and shifted windows
+                    window_size=window_size,
+                    relative_pos_embedding=True
+                )
+            )
 
     def forward(self, x, skip=None):
         """
@@ -278,8 +270,8 @@ class SwinDecoderLayer(nn.Module):
         x = x.view(B, H, W, C)
         
         # apply Swin transformer blocks
-        x = self.swin_block1(x)
-        x = self.swin_block2(x)
+        for block in self.blocks:
+            x = block(x)
         
         # reshape back to (B, L, C)
         x = x.view(B, H * W, C)
@@ -333,6 +325,7 @@ class SwinUNet(nn.Module):
             layer = SwinEncoderLayer(
                 input_resolution=layer_resolution,
                 dim=int(embed_dim * 2 ** i_layer),
+                depth=depths[i_layer],
                 num_heads=num_heads[i_layer],
                 window_size=window_size,
                 mlp_ratio=self.mlp_ratio,
@@ -359,6 +352,7 @@ class SwinUNet(nn.Module):
                 layer = SwinDecoderLayer(
                     input_resolution=layer_resolution,
                     dim=current_dim,
+                    depth=depths[i_layer],
                     num_heads=num_heads[i_layer],
                     window_size=window_size,
                     mlp_ratio=self.mlp_ratio,
@@ -412,6 +406,7 @@ class SwinUNet(nn.Module):
                 layer = SwinDecoderLayer(
                     input_resolution=layer_resolution,
                     dim=current_dim,
+                    depth=depths[i_layer],
                     num_heads=num_heads[i_layer],
                     window_size=window_size,
                     mlp_ratio=self.mlp_ratio,
@@ -499,10 +494,10 @@ def swin_unet_tiny(pretrained=False, **kwargs):
     """Swin-UNet-Tiny model"""
     model = SwinUNet(
         patch_size=4,
-        embed_dim=96,
+        embed_dim=64,
         depths=[2, 2, 2, 2],
         num_heads=[3, 6, 12, 24],
-        window_size=7,
+        window_size=4,
         mlp_ratio=4,
         drop_rate=0.0,
         drop_path_rate=0.1,
@@ -532,7 +527,7 @@ def swin_unet_base(pretrained=False, **kwargs):
         embed_dim=128,
         depths=[2, 2, 18, 2],
         num_heads=[4, 8, 16, 32],
-        window_size=7,
+        window_size=4,
         mlp_ratio=4,
         drop_rate=0.0,
         drop_path_rate=0.2,
@@ -545,28 +540,21 @@ def radar_swin_unet(img_size=128, in_chans=1, num_classes=1, **kwargs):
     """Radar-specific Swin U-Net optimized for 128x128 range-doppler maps"""
     model = SwinUNet(
         img_size=img_size,
-        patch_size=4,
         in_chans=in_chans,
         num_classes=num_classes,
-        embed_dim=64,  # Smaller for radar data
-        depths=[2, 2, 6, 2],  # Moderate depth
-        num_heads=[2, 4, 8, 16],  # Fewer heads
-        window_size=4,  # 32/4 = 8, 16/4 = 4, 8/4 = 2, 4/4 = 1 all work
-        mlp_ratio=4,
-        drop_rate=0.0,
-        drop_path_rate=0.1,
         **kwargs
     )
     return model
 
 if __name__ == "__main__":
     # Test the model
-    model = radar_swin_unet(img_size=128, in_chans=3, num_classes=1)
+    model = swin_unet_tiny(img_size=128, in_chans=1, num_classes=1)
+    print(model)
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f'Radar Swin U-Net: {trainable_params:,} trainable parameters')
     
     # Test forward pass
-    x = torch.randn(2, 3, 128, 128)
+    x = torch.randn(2, 1, 128, 128)
     output = model(x)
     print(f'Input shape: {x.shape}')
     print(f'Output shape: {output.shape}')

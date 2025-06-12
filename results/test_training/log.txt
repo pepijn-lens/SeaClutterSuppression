@@ -1,0 +1,7 @@
+[11:29:26.888] Namespace(root_path='data', dataset='SeaClutter', data_file='sea_clutter_single_frame.pt', num_classes=1, output_dir='results/test_training', max_epochs=2, batch_size=2, n_gpu=1, deterministic=1, base_lr=0.000125, img_size=224, seed=1234, use_frames='single', resume=None, tag=None, eval=False, num_workers=0, eval_interval=1)
+[11:29:26.888] Loading dataset from data/sea_clutter_single_frame.pt
+[11:29:27.374] Single-frame dataset - Images shape: torch.Size([22000, 128, 128])
+[11:29:27.374] Converted to sequences shape: torch.Size([22000, 1, 128, 128])
+[11:29:27.374] Train size: 15399
+[11:29:27.374] Val size: 6601
+[11:29:27.375] 7700 iterations per epoch. 15400 max iterations

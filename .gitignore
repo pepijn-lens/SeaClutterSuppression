@@ -11,3 +11,8 @@ pretrained/
 
 sea_clutter_segmentation_sequences.pt
 single_frame_test.pt
+
+results/swin_unet_training*
+
+# Ignore cache files
+*.cache
