@@ -5,7 +5,7 @@ This repository contains the code developed as part of my BSc thesis at **Leiden
 
 **_End-to-End Target Detection in Range-Doppler Maps with Temporal U-Nets: Deep Learning Approaches for Maritime Radar_**
 
-## 📘 Overview
+## Overview
 
 The aim of this project is to evaluate and compare the performance of deep learning models in maritime radar target detection, specifically focusing on sea clutter suppression. The pipeline includes:
 
@@ -15,7 +15,7 @@ The aim of this project is to evaluate and compare the performance of deep learn
 
 This work demonstrates how AI, particularly deep learning, can be applied to real-world signal processing problems in radar technology.
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Installation
 
@@ -33,27 +33,27 @@ This work demonstrates how AI, particularly deep learning, can be applied to rea
 - SciPy
 - StoneSoup
 
-## ⚙️ Usage
+##  Usage
 
 ### Script Usage
 
 Generate data directly:
 ```bash
-python src/generate_data.py --samples 1000 --max-targets 5 --sea-state 5 --frames 3 --save-path data/dataset.pt
+python -m src.generate_data.py --samples 2000 --max-targets 10 --sea-state 5 --frames 1 --save-path data/dataset.pt
 ```
 
 Train a U-Net from the dataset:
 ```bash
-python src/unet_training.py --dataset-path data/dataset.pt --n-channels 3 --epochs 30 --batch-size 16 --lr 1e-4 --model-save-path pretrained/unet.pt
+python -m src.unet_training.py --dataset-path data/dataset.pt --n-channels 1 --epochs 50 --batch-size 32 --lr 1e-4 --model-save-path pretrained/unet.pt
 ```
 
 Evaluate the trained detector:
 ```bash
-python src/end_to_end_evaluate.py --dataset data/dataset.pt --model pretrained/unet.pt --save-path end_to_end_results --cluster-min-area 3 --cluster-eps 1 --cluster-min-samples 1 --interactive
+python -m src.end_to_end_evaluate.py --dataset data/dataset.pt --model pretrained/unet.pt --save-path end_to_end_results --cluster-min-area 3 --cluster-eps 1 --cluster-min-samples 1 --interactive
 ```
 
 
-## 📂 Project Structure
+## Project Structure
 ```plaintext
 .
 ├── results/          # Images and plots of the findings
@@ -66,13 +66,13 @@ python src/end_to_end_evaluate.py --dataset data/dataset.pt --model pretrained/u
 └── requirements.txt  # Project dependencies  
 ```
 
-## 📄 Documentation
+## Documentation
 
 Refer to my thesis for detailed background, methodology, and experimental results:
 
 📄 **[Thesis Link](#)** 
 
-## 🧠 Built With
+## Built With
 
 - Python
 - PyTorch
@@ -80,11 +80,11 @@ Refer to my thesis for detailed background, methodology, and experimental result
 - SciPy
 - StoneSoup
 
-## 📜 License
+## License
 
 This repository is under a **proprietary license**. Please contact the author for usage inquiries.
 
-## 🙌 Acknowledgments
+## Acknowledgments
 
 I would like to thank my supervisors:
 
