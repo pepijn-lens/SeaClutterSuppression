@@ -38,7 +38,10 @@ def simulate_sequence_with_realistic_targets(
     cp: sea_clutter.ClutterParams,
     sp: sea_clutter.SequenceParams,
     targets: List[sea_clutter.RealisticTarget],
-    random_roll: bool = False
+    random_roll: bool = False,
+    *,
+    thermal_noise_db: float = 1,
+    target_signal_power: float = None
 ) -> list[np.ndarray]:  # Return only RDMs
     """Simulate sequence with multiple realistic targets."""
     dt = 1.0 / sp.frame_rate_hz
@@ -55,7 +58,7 @@ def simulate_sequence_with_realistic_targets(
             texture = np.roll(texture, shift=shift_bins, axis=0)
             
         clutter_td, texture, speckle_tail = sea_clutter.simulate_sea_clutter(
-            rp, cp, texture=texture, init_speckle=speckle_tail
+            rp, cp, texture=texture, init_speckle=speckle_tail, thermal_noise_db=thermal_noise_db
         )
 
         # Update and add each target
@@ -63,11 +66,15 @@ def simulate_sequence_with_realistic_targets(
             # Update target velocity with realistic variations
             sea_clutter.update_realistic_target_velocity(tgt, rp)
             
+            # Override target power with user-controlled value if provided
+            target_power = target_signal_power if target_signal_power is not None else tgt.power
+            
             # Convert to Target object for add_target_blob function
             simple_target = sea_clutter.Target(
                 rng_idx=tgt.rng_idx,
                 doppler_hz=tgt.doppler_hz,
-                power=tgt.power
+                power=target_power,
+                size=getattr(tgt, 'size', 1)  # Include target size
             )
             
             # Add target to clutter data

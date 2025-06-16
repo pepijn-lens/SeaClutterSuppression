@@ -12,26 +12,33 @@ def generate_single_frame_with_targets(
     rp: sea_clutter.RadarParams,
     cp: sea_clutter.ClutterParams,
     n_targets: int,
+    *,
+    thermal_noise_db: float = 1,
+    target_signal_power: float = None,
+    target_type: sea_clutter.TargetType = sea_clutter.TargetType.FIXED
 ) -> np.ndarray:
     """Generate a single range-Doppler map with specified number of targets."""
     
-    # Generate sea clutter
-    clutter_td, _, _ = sea_clutter.simulate_sea_clutter(rp, cp)
+    # Generate sea clutter with user-controlled noise power
+    clutter_td, _, _ = sea_clutter.simulate_sea_clutter(rp, cp, thermal_noise_db=thermal_noise_db)
     
     # Generate random targets if needed
     if n_targets > 0:
-        max_range = rp.n_ranges * rp.range_resolution
         targets = [
-            sea_clutter.create_realistic_target(sea_clutter.TargetType.FIXED, random.randint(0, max_range-1), rp) 
+            sea_clutter.create_realistic_target(target_type, random.randint(MIN_RANGE, MAX_RANGE), rp) 
             for _ in range(n_targets)
         ]
         
         # Add each target to the clutter data
         for tgt in targets:
+            # Override target power with user-controlled value if provided
+            target_power = target_signal_power if target_signal_power is not None else tgt.power
+            
             simple_target = sea_clutter.Target(
                 rng_idx=tgt.rng_idx,
                 doppler_hz=tgt.doppler_hz,
-                power=tgt.power
+                power=target_power,
+                size=getattr(tgt, 'size', 1)  # Include target size
             )
             sea_clutter.add_target_blob(clutter_td, simple_target, rp)
     
@@ -138,7 +145,10 @@ def simulate_sequence_with_realistic_targets_and_masks(
     cp: sea_clutter.ClutterParams,
     sp: sea_clutter.SequenceParams,
     targets: List[sea_clutter.RealisticTarget],
-    random_roll: bool = True
+    random_roll: bool = True,
+    *,
+    thermal_noise_db: float = 1,
+    target_signal_power: float = None
 ) -> tuple[list[np.ndarray], list[np.ndarray]]:  # Return RDMs and masks
     """Simulate sequence with multiple realistic targets and generate corresponding masks."""
     dt = 1.0 / sp.frame_rate_hz
@@ -157,7 +167,7 @@ def simulate_sequence_with_realistic_targets_and_masks(
             texture = np.roll(texture, shift=shift_bins, axis=0)
             
         clutter_td, texture, speckle_tail = sea_clutter.simulate_sea_clutter(
-            rp, cp, texture=texture, init_speckle=speckle_tail
+            rp, cp, texture=texture, init_speckle=speckle_tail, thermal_noise_db=thermal_noise_db
         )
         
         # Initialize binary mask for this frame
@@ -168,11 +178,15 @@ def simulate_sequence_with_realistic_targets_and_masks(
             # Update target velocity with realistic variations
             sea_clutter.update_realistic_target_velocity(tgt, rp)
             
+            # Override target power with user-controlled value if provided
+            target_power = target_signal_power if target_signal_power is not None else tgt.power
+            
             # Convert to Target object for add_target_blob function
             simple_target = sea_clutter.Target(
                 rng_idx=tgt.rng_idx,
                 doppler_hz=tgt.doppler_hz,
-                power=tgt.power
+                power=target_power,
+                size=getattr(tgt, 'size', 1)  # Use target size from realistic target
             )
             
             # Add target to clutter data
@@ -183,11 +197,20 @@ def simulate_sequence_with_realistic_targets_and_masks(
             doppler_bin = int(tgt.doppler_hz / (rp.prf / rp.n_pulses)) + 64
             doppler_bin = np.clip(doppler_bin, 0, rp.n_pulses - 1)
             
-            # Mark target in mask with small blob
-            blob_size = 1
-            d_start = max(0, doppler_bin - blob_size - 1)
-            d_end = min(rp.n_pulses, doppler_bin + blob_size + 1)
-            target_mask[tgt.rng_idx, d_start:d_end] = 1.0
+            # Mark target in mask with blob size based on target type
+            target_size = getattr(tgt, 'size', 1)
+            range_half_size = (target_size - 1) // 2
+            doppler_blob_size = 1  # Keep Doppler spread consistent
+            
+            # Range extent
+            r_start = max(0, tgt.rng_idx - range_half_size)
+            r_end = min(rp.n_ranges, tgt.rng_idx + range_half_size + 1)
+            
+            # Doppler extent
+            d_start = max(0, doppler_bin - doppler_blob_size - 1)
+            d_end = min(rp.n_pulses, doppler_bin + doppler_blob_size + 1)
+            
+            target_mask[r_start:r_end, d_start:d_end] = 1.0
             
             # Update target range based on radial velocity
             range_change = tgt.current_velocity_mps * dt

@@ -17,19 +17,19 @@ class DoubleConv(nn.Module):
         return self.double_conv(x)
 
 class UNet(nn.Module):
-    def __init__(self, n_channels=3, n_classes=1):
+    def __init__(self, n_channels=3, n_classes=1, base_filters=16):
         super().__init__()
-        self.enc1 = DoubleConv(n_channels, 16)
-        self.enc2 = DoubleConv(16, 32)
-        self.enc3 = DoubleConv(32, 64)
+        self.enc1 = DoubleConv(n_channels, base_filters)
+        self.enc2 = DoubleConv(base_filters, base_filters * 2)
+        self.enc3 = DoubleConv(base_filters * 2, base_filters * 4)
 
         self.pool = nn.MaxPool2d(2)
-        self.up2 = nn.ConvTranspose2d(64, 32, 2, stride=2)
-        self.dec2 = DoubleConv(64, 32)
-        self.up1 = nn.ConvTranspose2d(32, 16, 2, stride=2)
-        self.dec1 = DoubleConv(32, 16)
+        self.up2 = nn.ConvTranspose2d(base_filters * 4, base_filters * 2, 2, stride=2)
+        self.dec2 = DoubleConv(base_filters * 4, base_filters * 2)
+        self.up1 = nn.ConvTranspose2d(base_filters * 2, base_filters, 2, stride=2)
+        self.dec1 = DoubleConv(base_filters * 2, base_filters)
 
-        self.out_conv = nn.Conv2d(16, n_classes, kernel_size=1)
+        self.out_conv = nn.Conv2d(base_filters, n_classes, kernel_size=1)
 
     def forward(self, x):
         x1 = self.enc1(x)

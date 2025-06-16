@@ -3,23 +3,23 @@ SINGLE CHANNEL MODEL ANALYSIS
 
 Overall Performance:
 -------------------
-Mean Dice: 0.9600
-Std Dice: 0.0774
+Mean Dice: 0.9370
+Std Dice: 0.0993
 Min Dice: 0.1111
 Max Dice: 1.0000
-Median Dice: 0.9878
+Median Dice: 0.9688
 
 Confidence Analysis:
 -------------------
 Mean Confidence: 0.0012
-Confidence-Performance Correlation: 0.0071
-Positive Class Confidence: 0.8609
+Confidence-Performance Correlation: 0.0600
+Positive Class Confidence: 0.8300
 Negative Class Confidence: 0.0000
 
 Error Analysis:
 --------------
-Mean False Positives: 0.5503
-Mean False Negatives: 1.1009
-Mean Error Rate: 0.0001
-Outliers: 166.0000
+Mean False Positives: 0.7358
+Mean False Negatives: 1.7382
+Mean Error Rate: 0.0002
+Outliers: 148.0000
 

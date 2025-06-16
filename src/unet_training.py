@@ -39,7 +39,9 @@ class CombinedLoss(nn.Module):
         self.dice_weight = dice_weight
     
     def forward(self, pred, target):
+        # BCE with logits expects raw logits (no sigmoid)
         bce = self.bce_loss(pred, target)
+        # Dice loss applies sigmoid internally
         dice = self.dice_loss(pred, target)
         return self.bce_weight * bce + self.dice_weight * dice
 
@@ -68,7 +70,7 @@ def evaluate(model, loader, device) -> Tuple[float, float, float]:
 # ---------------------------
 # 3. Training Loop
 # ---------------------------
-def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, batch_size=16, lr=1e-4, pretrained=None, model_save_path='unet_single_frame.pt', bce_weight=1.0, dice_weight=1.0):
+def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, batch_size=16, lr=1e-4, pretrained=None, model_save_path='unet_single_frame.pt', bce_weight=1.0, dice_weight=1.0, base_filters=16):
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
 
@@ -77,7 +79,7 @@ def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, b
         batch_size=batch_size,
     )
 
-    model = models.UNet(n_channels=n_channels).to(device)  # Now uses the parameter
+    model = models.UNet(n_channels=n_channels, base_filters=base_filters).to(device)  # Now uses both parameters
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f'{trainable_params:,} trainable parameters')
     if pretrained:
@@ -129,7 +131,7 @@ def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, b
     print(f"Best model saved to {model_save_path} with Dice score: {best_dice:.3f}")
 
 
-def comprehensive_model_analysis(model_path: str, dataset_path: str, n_channels=3, batch_size: int = 16, save_dir: str = 'single_frame'):
+def comprehensive_model_analysis(model_path: str, dataset_path: str, n_channels=3, batch_size: int = 16, save_dir: str = 'single_frame', base_filters=16):
     """
     Comprehensive model performance analysis with multiple visualizations.
     """
@@ -138,7 +140,7 @@ def comprehensive_model_analysis(model_path: str, dataset_path: str, n_channels=
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
     # Load model and data
-    model = models.UNet(n_channels=n_channels).to(device)  # Single channel model
+    model = models.UNet(n_channels=n_channels, base_filters=base_filters).to(device)  # Single channel model with configurable filters
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
     
@@ -400,6 +402,8 @@ if __name__ == "__main__":
                         help="Weight for BCE loss in combined loss")
     parser.add_argument("--dice-weight", type=float, default=1.0,
                         help="Weight for Dice loss in combined loss")
+    parser.add_argument("--base-filters", type=int, default=16,
+                        help="Number of base filters for U-Net")
 
     args = parser.parse_args()
 
@@ -414,6 +418,7 @@ if __name__ == "__main__":
         model_save_path=args.model_save_path,
         bce_weight=args.bce_weight,
         dice_weight=args.dice_weight,
+        base_filters=args.base_filters
     )
 
     comprehensive_model_analysis(
@@ -421,4 +426,5 @@ if __name__ == "__main__":
         args.dataset_path,
         n_channels=args.n_channels,
         save_dir= 'single_frame' if args.n_channels == 1 else 'multi_frame',
+        base_filters=args.base_filters
     )

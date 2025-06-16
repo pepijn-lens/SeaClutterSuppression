@@ -31,6 +31,7 @@ class Target:
     rng_idx: int
     doppler_hz: float
     power: float = 10.0             # Linear power for the central cell
+    size: int = 1                   # Target size in pixels (range bins)
 
 @dataclass
 class SequenceParams:
@@ -52,6 +53,7 @@ class RealisticTarget:
     doppler_hz: float
     power: float = 10.0
     target_type: TargetType = TargetType.CARGO_SHIP
+    size: int = 1                       # Target size in pixels (range bins)
     
     # Movement parameters
     base_velocity_mps: float = 5.0      # Base radial velocity [m/s]

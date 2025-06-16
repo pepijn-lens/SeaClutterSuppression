@@ -91,14 +91,32 @@ def simulate_sea_clutter(
 
 
 def add_target_blob(signal_td: np.ndarray, tgt: Target, rp: RadarParams):
-    """Add a target at tgt.rng_idx with given power and Doppler."""
+    """Add a target at tgt.rng_idx with given power and Doppler, spreading over multiple range bins based on size."""
     n = np.arange(rp.n_pulses)
     phase = np.exp(1j * 2.0 * np.pi * tgt.doppler_hz * n / rp.prf)
     # Fix: Use consistent dB to amplitude scaling
     amp_center = 10.0 ** (tgt.power / 20.0)
-    idx = tgt.rng_idx
-    if 0 <= idx < rp.n_ranges: 
-        signal_td[idx] += amp_center * phase
+    
+    # Get target size (default to 1 if not specified)
+    target_size = getattr(tgt, 'size', 1)
+    
+    # Calculate range bins to fill
+    center_idx = tgt.rng_idx
+    half_size = (target_size - 1) // 2
+    
+    # Create power distribution across range bins
+    for offset in range(-half_size, half_size + 1):
+        idx = center_idx + offset
+        if 0 <= idx < rp.n_ranges:
+            # Reduce power for edge pixels to create realistic target profile
+            if offset == 0:
+                # Center pixel gets full power
+                power_factor = 1.0
+            else:
+                # Edge pixels get reduced power (70% of center)
+                power_factor = 0.7
+            
+            signal_td[idx] += amp_center * power_factor * phase
 
 
 def compute_range_doppler(signal_td: np.ndarray, rp: RadarParams, cp: ClutterParams) -> np.ndarray:

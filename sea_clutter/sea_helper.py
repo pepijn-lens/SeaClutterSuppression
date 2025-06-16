@@ -160,76 +160,21 @@ def create_realistic_target(target_type: TargetType, initial_range_idx: int, rp:
     standard_velocity_noise_std = 0.5
     
     # Base configurations for different vessel types
-    if target_type == TargetType.FISHING_VESSEL:
-        base_velocity = np.random.uniform(-8, 8)
-        return RealisticTarget(
-            rng_idx=initial_range_idx,
-            doppler_hz=2.0 * base_velocity / rp.carrier_wavelength,
-            power=np.random.uniform(0.01, 0.08),
-            target_type=target_type,
-            base_velocity_mps=base_velocity,
-            velocity_noise_std=standard_velocity_noise_std,    # Standardized
-            max_velocity_mps=12.0,
-            min_velocity_mps=-12.0,
-            current_velocity_mps=base_velocity
-        )
-    
-    elif target_type == TargetType.CARGO_SHIP:
+    if target_type == TargetType.CARGO_SHIP:
         base_velocity = np.random.uniform(-15, 15)
         return RealisticTarget(
             rng_idx=initial_range_idx,
             doppler_hz=2.0 * base_velocity / rp.carrier_wavelength,
             power=np.random.uniform(0.08, 0.15),
             target_type=target_type,
+            size=3,  # Cargo ships are larger - 3 pixels in range
             base_velocity_mps=base_velocity,
             velocity_noise_std=standard_velocity_noise_std,    # Standardized
             max_velocity_mps=20.0,
             min_velocity_mps=-20.0,
             current_velocity_mps=base_velocity
         )
-    
-    elif target_type == TargetType.PATROL_BOAT:
-        base_velocity = np.random.uniform(-18, 18)
-        return RealisticTarget(
-            rng_idx=initial_range_idx,
-            doppler_hz=2.0 * base_velocity / rp.carrier_wavelength,
-            power=np.random.uniform(0.04, 0.10),
-            target_type=target_type,
-            base_velocity_mps=base_velocity,
-            velocity_noise_std=standard_velocity_noise_std,    # Standardized
-            max_velocity_mps=25.0,
-            min_velocity_mps=-25.0,
-            current_velocity_mps=base_velocity
-        )
-    
-    elif target_type == TargetType.SMALL_CRAFT:
-        base_velocity = np.random.uniform(-10, 10)
-        return RealisticTarget(
-            rng_idx=initial_range_idx,
-            doppler_hz=2.0 * base_velocity / rp.carrier_wavelength,
-            power=np.random.uniform(0.01, 0.05),
-            target_type=target_type,
-            base_velocity_mps=base_velocity,
-            velocity_noise_std=standard_velocity_noise_std,    # Standardized
-            max_velocity_mps=15.0,
-            min_velocity_mps=-15.0,
-            current_velocity_mps=base_velocity
-        )
-    
-    elif target_type == TargetType.SAILBOAT:
-        base_velocity = np.random.uniform(-6, 6)
-        return RealisticTarget(
-            rng_idx=initial_range_idx,
-            doppler_hz=2.0 * base_velocity / rp.carrier_wavelength,
-            power=np.random.uniform(0.015, 0.06),
-            target_type=target_type,
-            base_velocity_mps=base_velocity,
-            velocity_noise_std=standard_velocity_noise_std,    # Standardized
-            max_velocity_mps=12.0,
-            min_velocity_mps=-12.0,
-            current_velocity_mps=base_velocity
-        )
-    
+
     elif target_type == TargetType.SPEEDBOAT:
         base_velocity = np.random.uniform(-25, 25)
         return RealisticTarget(
@@ -237,6 +182,7 @@ def create_realistic_target(target_type: TargetType, initial_range_idx: int, rp:
             doppler_hz=2.0 * base_velocity / rp.carrier_wavelength,
             power=np.random.uniform(0.03, 0.08),
             target_type=target_type,
+            size=1,  # Speedboats are small - 1 pixel in range
             base_velocity_mps=base_velocity,
             velocity_noise_std=standard_velocity_noise_std,    # Standardized
             max_velocity_mps=35.0,
@@ -252,6 +198,7 @@ def create_realistic_target(target_type: TargetType, initial_range_idx: int, rp:
             doppler_hz=2.0 * base_velocity / rp.carrier_wavelength,
             power=np.random.uniform(10, 11),
             target_type=target_type,
+            size=1,  # Default size for fixed targets
             base_velocity_mps=base_velocity,
             velocity_noise_std=standard_velocity_noise_std,    # Standardized
             max_velocity_mps=36.0,
