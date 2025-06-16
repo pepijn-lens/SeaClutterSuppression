@@ -145,7 +145,7 @@ def simulate_sequence_with_realistic_targets_and_masks(
     cp: sea_clutter.ClutterParams,
     sp: sea_clutter.SequenceParams,
     targets: List[sea_clutter.RealisticTarget],
-    random_roll: bool = True,
+    random_roll: bool = False,
     *,
     thermal_noise_db: float = 1,
     target_signal_power: float = None
@@ -194,7 +194,8 @@ def simulate_sequence_with_realistic_targets_and_masks(
             
             # Mark target location in binary mask
             # Convert Doppler frequency to bin index
-            doppler_bin = int(tgt.doppler_hz / (rp.prf / rp.n_pulses)) + 64
+            # Use proper FFT bin indexing - center frequency is at n_pulses//2 after fftshift
+            doppler_bin = int(tgt.doppler_hz / (rp.prf / rp.n_pulses)) + rp.n_pulses // 2
             doppler_bin = np.clip(doppler_bin, 0, rp.n_pulses - 1)
             
             # Mark target in mask with blob size based on target type
@@ -325,7 +326,7 @@ def generate_segmentation_dataset_with_sequences(
     # Create dataset dictionary
     dataset = {
         'sequences': sequences_tensor,
-        'mask_sequences': mask_sequences_tensor,
+        'masks': mask_sequences_tensor,
         'labels': labels_tensor,
         'metadata': {
             'samples_per_class': samples_per_class,

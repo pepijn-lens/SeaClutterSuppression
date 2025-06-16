@@ -8,36 +8,71 @@ app = marimo.App(width="full")
 def _():
     import marimo as mo
     import torch
-    import torch.nn as nn
     import numpy as np
     import matplotlib.pyplot as plt
     import random
     import os
-    from typing import Tuple, List
     import time
-    from tqdm import tqdm
+    import gc
+    import psutil
 
     # Import our custom modules
     import sea_clutter
     import models
-    from src.generate_data import generate_segmentation_dataset_with_sequences, generate_single_frame_with_targets, simulate_sequence_with_realistic_targets_and_masks
+    from src.generate_data import simulate_sequence_with_realistic_targets_and_masks
     from src.simulation import simulate_sequence_with_realistic_targets
-    from src.unet_training import train_model, comprehensive_model_analysis, DiceLoss, CombinedLoss, dice_coeff
+    from src.unet_training import train_model, comprehensive_model_analysis
 
-    print("✅ All modules imported successfully!")
+    # Memory management utility function
+    def cleanup_memory(verbose=True):
+        """Clean up memory by running garbage collection and clearing GPU cache"""
+        if verbose:
+            # Get memory usage before cleanup
+            process = psutil.Process(os.getpid())
+            mem_before = process.memory_info().rss / 1024 / 1024  # MB
+        
+        # Force garbage collection
+        gc.collect()
+        
+        # Clear PyTorch GPU cache if available
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+        
+        if verbose:
+            # Get memory usage after cleanup
+            mem_after = process.memory_info().rss / 1024 / 1024  # MB
+            mem_freed = mem_before - mem_after
+            print(f"🧹 Memory cleanup: {mem_before:.1f} MB → {mem_after:.1f} MB (freed {mem_freed:.1f} MB)")
+        
+        return mem_before, mem_after
+
+    def get_memory_usage():
+        """Get current memory usage in MB"""
+        process = psutil.Process(os.getpid())
+        return process.memory_info().rss / 1024 / 1024
+
+    print("All modules imported successfully!")
+    print(f"Current memory usage: {get_memory_usage():.1f} MB")
+    
     return (
+        cleanup_memory,
         comprehensive_model_analysis,
+        gc,
+        get_memory_usage,
         mo,
+        models,
         np,
         os,
         plt,
+        psutil,
         random,
         sea_clutter,
         simulate_sequence_with_realistic_targets,
         simulate_sequence_with_realistic_targets_and_masks,
         time,
         torch,
-        tqdm,
         train_model,
     )
 
@@ -48,12 +83,60 @@ def _(mo):
         """
     # 🌊 Interactive Sea Clutter Simulation & U-Net Training Notebook
 
-    This notebook provides three main functionalities: \t
+    This notebook provides four main functionalities: \t
     1. **Parameter Adjustment & Real-time Visualization** - Adjust radar and clutter parameters and see sea clutter simulation \t
     2. **Dataset Generation** - Generate synthetic sea clutter datasets for training \t
-    3. **U-Net Training** - Train deep learning models on the generated data
+    3. **U-Net Training** - Train deep learning models on the generated data\t
+    4. **Model Evaluation & Inference** - Test and analyze trained models
+
+    **💾 Memory Management**: This notebook includes automatic memory cleanup to free up RAM after intensive operations.
     """
     )
+    return
+
+
+@app.cell
+def _(cleanup_memory, get_memory_usage, mo):
+    # Memory Management Section
+    mo.md(f"""
+    ## 💾 **Memory Management**
+    
+    **Current Memory Usage**: {get_memory_usage():.1f} MB
+    
+    Large datasets and models can consume significant memory. Use the button below to free up RAM when needed.
+    """)
+    return
+
+
+@app.cell
+def _(cleanup_memory, mo):
+    # Manual memory cleanup button
+    cleanup_button = mo.ui.button(
+        label="🧹 Free Memory", 
+        kind="warn",
+        value=0,
+        on_click=lambda count: count + 1
+    )
+    
+    cleanup_button
+    return cleanup_button,
+
+
+@app.cell
+def _(cleanup_button, cleanup_memory, mo):
+    # Execute memory cleanup when button is pressed
+    if cleanup_button.value > 0:
+        mem_before, mem_after = cleanup_memory(verbose=True)
+        cleanup_result = mo.md(f"""
+        ✅ **Memory cleaned up successfully!**\t
+        - **Before**: {mem_before:.1f} MB\t
+        - **After**: {mem_after:.1f} MB  \t
+        - **Freed**: {mem_before - mem_after:.1f} MB
+        """)
+    else:
+        cleanup_result = mo.md("Click the button above to free up memory manually.")
+    
+    cleanup_result
     return
 
 
@@ -73,8 +156,8 @@ def _(mo):
 def _(mo):
     # Radar parameter controls
     radar_prf = mo.ui.slider(start=1000, stop=10000, value=5000, step=100, label="PRF (Hz)")
-    radar_n_pulses = mo.ui.slider(start=64, stop=256, value=128, step=64, label="Number of Pulses")
-    radar_n_ranges = mo.ui.slider(start=64, stop=256, value=128, step=64, label="Number of Range Bins")
+    radar_n_pulses = mo.ui.slider(start=64, stop=512, value=128, step=64, label="Number of Pulses")
+    radar_n_ranges = mo.ui.slider(start=64, stop=512, value=128, step=64, label="Number of Range Bins")
     radar_range_res = mo.ui.slider(start=0.5, stop=5.0, value=1.0, step=0.1, label="Range Resolution (m)")
 
     mo.hstack([radar_prf, radar_n_pulses, radar_n_ranges, radar_range_res])
@@ -144,13 +227,10 @@ def _(mo):
 def _(mo):
     # SNR control parameters
     target_signal_power = mo.ui.slider(start=-10, stop=30, value=15, step=1, label="Target Signal Power (dB)")
-    noise_power = mo.ui.slider(start=-20, stop=10, value=-5, step=1, label="Noise Power (dB)")
+    noise_power = mo.ui.slider(start=-20, stop=30, value=-5, step=1, label="Noise Power (dB)")
 
     mo.hstack([target_signal_power, noise_power])
     return noise_power, target_signal_power
-
-
-
 
 
 @app.cell
@@ -230,7 +310,7 @@ def _(
     if show_sequence:
         # Multi-frame sequence visualization
         print(f"🎬 Generating {sim_sp.n_frames} frame sequence at {sim_sp.frame_rate_hz} Hz")
-        
+
         # Create targets for sequence
         sim_targets = []
         if target_n_targets.value > 0:
@@ -248,7 +328,7 @@ def _(
 
         # Generate sequence using simulation module with SNR controls
         sim_rdm_list = simulate_sequence_with_realistic_targets(
-            sim_rp, sim_cp, sim_sp, sim_targets, random_roll=True, 
+            sim_rp, sim_cp, sim_sp, sim_targets, random_roll=False, 
             thermal_noise_db=noise_power.value, target_signal_power=target_signal_power.value
         )
 
@@ -264,18 +344,18 @@ def _(
             'noise_power': noise_power.value,
             'target_signal_power': target_signal_power.value
         }
-        
+
         # Display basic info about generated sequence
         sim_info = mo.md(f"""
-        **🎬 Sequence Generated Successfully:**
-        - **Frames**: {len(sim_rdm_list)} frames at {sim_sp.frame_rate_hz} Hz  
-        - **Duration**: {len(sim_rdm_list)/sim_sp.frame_rate_hz:.1f} seconds
-        - **Targets**: {target_n_targets.value} x {target_type_select.value}
-        - **SNR**: {target_signal_power.value - noise_power.value:.1f} dB
-        
+        **🎬 Sequence Generated Successfully:**\t
+        - **Frames**: {len(sim_rdm_list)} frames at {sim_sp.frame_rate_hz} Hz \t 
+        - **Duration**: {len(sim_rdm_list)/sim_sp.frame_rate_hz:.1f} seconds\t
+        - **Targets**: {target_n_targets.value} x {target_type_select.value}\t
+        - **SNR**: {target_signal_power.value - noise_power.value:.1f} dB\t
+
         *Use the interactive frame viewer below to explore the sequence.*
         """)
-        
+
         sequence_display = sim_info
 
     else:
@@ -325,8 +405,8 @@ def _(
         sim_range_axis = np.arange(sim_rp.n_ranges) * sim_rp.range_resolution
 
         # Use adaptive scaling
-        sim_vmin = np.min(sim_rdm_db)
-        sim_vmax = np.max(sim_rdm_db)
+        sim_vmin = -20
+        sim_vmax = 80
 
         sim_im = sim_ax.imshow(sim_rdm_db, aspect='auto', cmap='viridis', origin='lower',
                        extent=[sim_velocity.min(), sim_velocity.max(), sim_range_axis.min(), sim_range_axis.max()],
@@ -386,8 +466,8 @@ def _(frame_slider, mo, np, plt, sequence_data):
     # Display the selected frame from the slider
     if sequence_data is not None and frame_slider is not None:
         # Calculate consistent scaling across all frames  
-        vmin = np.min(sequence_data['rdm_db_list'])
-        vmax = np.max(sequence_data['rdm_db_list'])
+        vmin = -20
+        vmax = 80
 
         # Calculate axes
         fd = np.fft.fftshift(np.fft.fftfreq(sequence_data['rp'].n_pulses, d=1.0 / sequence_data['rp'].prf))
@@ -452,23 +532,16 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    mo.md("""Configure dataset generation parameters:""")
-    return
-
-
-@app.cell
-def _(mo):
     # Dataset generation controls
     dataset_samples_per_class = mo.ui.slider(start=100, stop=2000, value=500, step=50, label="Samples per Class")
-    dataset_max_targets = mo.ui.slider(start=5, stop=15, value=10, step=1, label="Maximum Targets")
-    dataset_sea_state = mo.ui.slider(start=1, stop=9, value=5, step=2, label="Sea State (WMO)")
+    dataset_max_targets = mo.ui.slider(start=0, stop=15, value=10, step=1, label="Maximum Targets")
     dataset_n_frames = mo.ui.slider(start=1, stop=10, value=3, step=1, label="Frames per Sequence")
 
     dataset_name = mo.ui.text(value="my_sea_clutter_dataset", label="Dataset Name")
 
     mo.vstack([
         mo.hstack([dataset_samples_per_class, dataset_max_targets]),
-        mo.hstack([dataset_sea_state, dataset_n_frames]),
+        mo.hstack([dataset_n_frames]),
         dataset_name
     ])
     return (
@@ -481,21 +554,24 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    # Dataset type selection
-    dataset_type = mo.ui.radio(
-        options=["single_frame", "multi_frame"],
-        value="single_frame",
-        label="Dataset Type"
+    # Just the generate button, no dataset type selection
+    generate_data_button = mo.ui.button(
+        label="🚀 Generate Dataset", 
+        kind="success",
+        value=0,
+        on_click=lambda count: count + 1
     )
 
-    generate_data_button = mo.ui.button(label="🚀 Generate Dataset", kind="success")
-
-    mo.hstack([dataset_type, generate_data_button])
-    return dataset_type, generate_data_button
+    mo.vstack([
+        mo.md("**Dataset Type:** Single Frame Segmentation (1 frame) or Multi-Frame Segmentation (>1 frames) - both include masks for target localization"),
+        generate_data_button
+    ])
+    return (generate_data_button,)
 
 
 @app.cell
 def _(
+    cleanup_memory,
     clutter_ar_coeff,
     clutter_bragg_offset,
     clutter_bragg_power,
@@ -507,13 +583,10 @@ def _(
     dataset_n_frames,
     dataset_name,
     dataset_samples_per_class,
-    dataset_type,
     generate_data_button,
-    mo,
     noise_power,
     np,
     os,
-    plt,
     radar_n_pulses,
     radar_n_ranges,
     radar_prf,
@@ -525,17 +598,35 @@ def _(
     target_type_select,
     time,
     torch,
-    tqdm,
 ):
     # Dataset generation logic
     dataset_result = None
-    if generate_data_button.value:
+
+    # Create a global variable to track the last generation button value
+    import __main__
+    if not hasattr(__main__, '_last_generation_button_value'):
+        __main__._last_generation_button_value = 0
+
+    # Only generate if button was clicked AND we haven't already generated for this click
+    should_generate = (generate_data_button.value > 0 and 
+                      generate_data_button.value != __main__._last_generation_button_value)
+
+    if should_generate:
+        # Update the tracked value to prevent re-generation
+        __main__._last_generation_button_value = generate_data_button.value
+
         print("🔄 Starting dataset generation...")
         gen_start_time = time.time()
 
         gen_save_path = f"data/{dataset_name.value}.pt"
 
-        if dataset_type.value == "single_frame":
+        # Create data directory if it doesn't exist
+        os.makedirs("data", exist_ok=True)
+
+        # Determine dataset type based on number of frames
+        is_single_frame = dataset_n_frames.value == 1
+
+        if is_single_frame:
             print("📸 Generating single-frame dataset...")
 
             # Use parameters from visualization section (user-configured)
@@ -556,18 +647,33 @@ def _(
                 wave_speed_mps=clutter_wave_speed.value
             )
 
-            print(f"📊 Using User-Configured Parameters:")
-            print(f"  • Samples per class: {dataset_samples_per_class.value}")
-            print(f"  • Max targets: {dataset_max_targets.value}")
-            print(f"  • Target type: {target_type_select.value}")
-            print(f"  • RDM size: {gen_rp.n_ranges} x {gen_rp.n_pulses}")
-            print(f"  • PRF: {gen_rp.prf} Hz")
-            print(f"  • Range resolution: {gen_rp.range_resolution} m")
-            print(f"  • Clutter power: {gen_cp.mean_power_db} dB")
-            print(f"  • Sea conditions: AR={gen_cp.ar_coeff}, Wave Speed={gen_cp.wave_speed_mps} m/s")
+            # Set sequence parameters for single frame
+            gen_sp = sea_clutter.SequenceParams()
+            gen_sp.n_frames = 1
 
-            # Storage for data and labels
+            print(f"📊 Using Parameters from Section 1 Visualization:")
+            print(f"  🎯 Dataset Generation:")
+            print(f"    • Samples per class: {dataset_samples_per_class.value}")
+            print(f"    • Max targets: {dataset_max_targets.value}")
+            print(f"    • Target type: {target_type_select.value}")
+            print(f"  📡 Radar Configuration:")
+            print(f"    • RDM size: {gen_rp.n_ranges} x {gen_rp.n_pulses}")
+            print(f"    • PRF: {gen_rp.prf} Hz")
+            print(f"    • Range resolution: {gen_rp.range_resolution} m")
+            print(f"  🌊 Sea Clutter Configuration:")
+            print(f"    • Clutter power: {gen_cp.mean_power_db} dB")
+            print(f"    • Shape parameter: {gen_cp.shape_param}")
+            print(f"    • AR coefficient: {gen_cp.ar_coeff}")
+            print(f"    • Wave speed: {gen_cp.wave_speed_mps} m/s")
+            print(f"    • Bragg offset: {gen_cp.bragg_offset_hz} Hz")
+            print(f"  📶 Signal/Noise Configuration:")
+            print(f"    • Target signal power: {target_signal_power.value} dB")
+            print(f"    • Noise power: {noise_power.value} dB")
+            print(f"    • SNR: {target_signal_power.value - noise_power.value:.1f} dB")
+
+            # Storage for data, masks and labels
             gen_all_images = []
+            gen_all_masks = []
             gen_all_labels = []
 
             # Get target type from user selection
@@ -577,11 +683,9 @@ def _(
             for n_targets in range(dataset_max_targets.value + 1):
                 print(f"🎯 Generating {dataset_samples_per_class.value} samples for {n_targets} targets...")
 
-                for gen_sample_idx in tqdm(range(dataset_samples_per_class.value), desc=f"Class {n_targets}"):
-                    # Generate sea clutter with user-controlled noise power
-                    gen_clutter_td, _, _ = sea_clutter.simulate_sea_clutter(gen_rp, gen_cp, thermal_noise_db=noise_power.value)
-
-                    # Add targets if needed using user-selected target type
+                for gen_sample_idx in range(dataset_samples_per_class.value):
+                    # Generate targets for this sample
+                    gen_targets = []
                     if n_targets > 0:
                         for _ in range(n_targets):
                             gen_target = sea_clutter.create_realistic_target(
@@ -589,48 +693,47 @@ def _(
                                 random.randint(30, gen_rp.n_ranges - 30), 
                                 gen_rp
                             )
+                            gen_targets.append(gen_target)
 
-                            # Override target power with user-controlled value
-                            gen_target.power = target_signal_power.value
+                    # Generate single frame RDM and mask with SNR controls
+                    gen_rdm_list, gen_mask_list = simulate_sequence_with_realistic_targets_and_masks(
+                        gen_rp, gen_cp, gen_sp, gen_targets, 
+                        thermal_noise_db=noise_power.value, target_signal_power=target_signal_power.value
+                    )
 
-                            # Convert to simple target for adding to clutter
-                            gen_simple_target = sea_clutter.Target(
-                                rng_idx=gen_target.rng_idx,
-                                doppler_hz=gen_target.doppler_hz,
-                                power=gen_target.power,
-                                size=getattr(gen_target, 'size', 1)  # Include target size
-                            )
-
-                            # Add target to clutter data
-                            sea_clutter.add_target_blob(gen_clutter_td, gen_simple_target, gen_rp)
-
-                    # Compute range-Doppler map
-                    gen_rdm = sea_clutter.compute_range_doppler(gen_clutter_td, gen_rp, gen_cp)
+                    # Extract single frame from lists
+                    gen_rdm = gen_rdm_list[0]
+                    gen_mask = gen_mask_list[0]
 
                     # Convert to dB scale and normalize
                     gen_rdm_db = 20 * np.log10(np.abs(gen_rdm) + 1e-10)
                     gen_rdm_normalized = (gen_rdm_db - np.mean(gen_rdm_db)) / (np.std(gen_rdm_db) + 1e-10)
 
-                    # Store image and label
+                    # Store image, mask and label
                     gen_all_images.append(gen_rdm_normalized)
+                    gen_all_masks.append(gen_mask)
                     gen_all_labels.append(n_targets)
 
             # Convert to numpy arrays and then to tensors
             gen_images = np.array(gen_all_images)
+            gen_masks = np.array(gen_all_masks)
             gen_labels = np.array(gen_all_labels)
 
             # Convert to PyTorch tensors
             gen_images_tensor = torch.from_numpy(gen_images).float()
+            gen_masks_tensor = torch.from_numpy(gen_masks).float()
             gen_labels_tensor = torch.from_numpy(gen_labels).long()
 
             # Create dataset dictionary
             dataset_result = {
                 'images': gen_images_tensor,
+                'masks': gen_masks_tensor,
                 'labels': gen_labels_tensor,
                 'metadata': {
                     'samples_per_class': dataset_samples_per_class.value,
                     'max_targets': dataset_max_targets.value,
                     'target_type': target_type_select.value,
+                    'n_frames': 1,
                     'n_ranges': gen_rp.n_ranges,
                     'n_doppler_bins': gen_rp.n_pulses,
                     'range_resolution': gen_rp.range_resolution,
@@ -650,12 +753,12 @@ def _(
                         'snr_db': target_signal_power.value - noise_power.value
                     },
                     'class_names': [f"{targets_idx}_targets" for targets_idx in range(dataset_max_targets.value + 1)],
-                    'dataset_type': 'single_frame_classification'
+                    'dataset_type': 'single_frame_segmentation'
                 }
             }
 
         else:  # multi_frame
-            print("🎬 Generating multi-frame segmentation dataset...")
+            print(f"🎬 Generating multi-frame segmentation dataset ({dataset_n_frames.value} frames)...")
 
             # Use parameters from visualization section (user-configured)
             gen_rp = sea_clutter.RadarParams(
@@ -679,16 +782,26 @@ def _(
             gen_sp = sea_clutter.SequenceParams()
             gen_sp.n_frames = dataset_n_frames.value
 
-            print(f"📊 Using User-Configured Parameters:")
-            print(f"  • Samples per class: {dataset_samples_per_class.value}")
-            print(f"  • Max targets: {dataset_max_targets.value}")
-            print(f"  • Target type: {target_type_select.value}")
-            print(f"  • Frames per sequence: {dataset_n_frames.value}")
-            print(f"  • RDM size: {gen_rp.n_ranges} x {gen_rp.n_pulses}")
-            print(f"  • PRF: {gen_rp.prf} Hz")
-            print(f"  • Range resolution: {gen_rp.range_resolution} m")
-            print(f"  • Clutter power: {gen_cp.mean_power_db} dB")
-            print(f"  • Sea conditions: AR={gen_cp.ar_coeff}, Wave Speed={gen_cp.wave_speed_mps} m/s")
+            print(f"📊 Using Parameters from Section 1 Visualization:")
+            print(f"  🎯 Dataset Generation:")
+            print(f"    • Samples per class: {dataset_samples_per_class.value}")
+            print(f"    • Max targets: {dataset_max_targets.value}")
+            print(f"    • Target type: {target_type_select.value}")
+            print(f"    • Frames per sequence: {dataset_n_frames.value}")
+            print(f"  📡 Radar Configuration:")
+            print(f"    • RDM size: {gen_rp.n_ranges} x {gen_rp.n_pulses}")
+            print(f"    • PRF: {gen_rp.prf} Hz")
+            print(f"    • Range resolution: {gen_rp.range_resolution} m")
+            print(f"  🌊 Sea Clutter Configuration:")
+            print(f"    • Clutter power: {gen_cp.mean_power_db} dB")
+            print(f"    • Shape parameter: {gen_cp.shape_param}")
+            print(f"    • AR coefficient: {gen_cp.ar_coeff}")
+            print(f"    • Wave speed: {gen_cp.wave_speed_mps} m/s")
+            print(f"    • Bragg offset: {gen_cp.bragg_offset_hz} Hz")
+            print(f"  📶 Signal/Noise Configuration:")
+            print(f"    • Target signal power: {target_signal_power.value} dB")
+            print(f"    • Noise power: {noise_power.value} dB")
+            print(f"    • SNR: {target_signal_power.value - noise_power.value:.1f} dB")
 
             # Generate multi-frame dataset with custom parameters
             gen_all_sequences = []
@@ -702,7 +815,7 @@ def _(
             for n_targets in range(dataset_max_targets.value + 1):
                 print(f"🎯 Generating {dataset_samples_per_class.value} sequences for {n_targets} targets...")
 
-                for gen_sample_idx in tqdm(range(dataset_samples_per_class.value), desc=f"Class {n_targets}"):
+                for gen_sample_idx in range(dataset_samples_per_class.value):
                     # Generate targets for this sequence
                     gen_targets = []
                     if n_targets > 0:
@@ -753,7 +866,7 @@ def _(
             # Create dataset dictionary
             dataset_result = {
                 'sequences': gen_sequences_tensor,
-                'mask_sequences': gen_mask_sequences_tensor,
+                'masks': gen_mask_sequences_tensor,
                 'labels': gen_labels_tensor,
                 'metadata': {
                     'samples_per_class': dataset_samples_per_class.value,
@@ -783,9 +896,8 @@ def _(
                 }
             }
 
-        # Save dataset (if single frame) or load info (if multi frame)
-        if dataset_type.value == "single_frame":
-            torch.save(dataset_result, gen_save_path)
+        # Save dataset
+        torch.save(dataset_result, gen_save_path)
 
         gen_end_time = time.time()
         gen_generation_time = gen_end_time - gen_start_time
@@ -793,61 +905,217 @@ def _(
         print(f"✅ Dataset generation completed in {gen_generation_time:.1f} seconds!")
         print(f"📁 Dataset saved to: {gen_save_path}")
 
-        if dataset_type.value == "single_frame":
+        if is_single_frame:
             gen_file_size = torch.load(gen_save_path)['images'].element_size() * torch.load(gen_save_path)['images'].nelement() / (1024**2)
             print(f"💾 File size: {gen_file_size:.1f} MB")
             print(f"📈 Dataset shape: {dataset_result['images'].shape}")
+            print(f"📈 Masks shape: {dataset_result['masks'].shape}")
         else:
             gen_file_size = os.path.getsize(gen_save_path) / (1024**2)
             print(f"💾 File size: {gen_file_size:.1f} MB")
             print(f"📈 Sequences shape: {dataset_result['sequences'].shape}")
-            print(f"📈 Masks shape: {dataset_result['mask_sequences'].shape}")
+            print(f"📈 Masks shape: {dataset_result['masks'].shape}")
 
-        # Show sample
-        if dataset_type.value == "single_frame":
-            gen_sample_idx = random.randint(0, len(dataset_result['images']) - 1)
-            gen_sample_img = dataset_result['images'][gen_sample_idx].numpy()
-            gen_sample_label = dataset_result['labels'][gen_sample_idx].item()
-
-            gen_sample_fig, gen_sample_ax = plt.subplots(figsize=(8, 6))
-            gen_sample_ax.imshow(gen_sample_img, aspect='auto', cmap='viridis', origin='lower')
-            gen_sample_ax.set_title(f'Sample RDM (Label: {gen_sample_label} targets)')
-            gen_sample_ax.set_xlabel('Doppler Bin')
-            gen_sample_ax.set_ylabel('Range Bin')
-            gen_cbar = plt.colorbar(gen_sample_ax.images[0], ax=gen_sample_ax, label='Normalized Power (dB)')
-            plt.tight_layout()
-
+        # Clean up memory after dataset generation
+        print("🧹 Cleaning up memory after dataset generation...")
+        
+        # Clear large variables
+        if is_single_frame:
+            del gen_all_images, gen_all_masks, gen_all_labels
+            del gen_images, gen_masks, gen_labels
+            del gen_images_tensor, gen_masks_tensor, gen_labels_tensor
         else:
-            gen_sample_idx = random.randint(0, len(dataset_result['sequences']) - 1)
-            gen_sample_seq = dataset_result['sequences'][gen_sample_idx].numpy()
-            gen_sample_mask = dataset_result['mask_sequences'][gen_sample_idx].numpy()
-            gen_sample_label = dataset_result['labels'][gen_sample_idx].item()
+            del gen_all_sequences, gen_all_mask_sequences, gen_all_labels
+            del gen_sequences, gen_mask_sequences, gen_labels
+            del gen_sequences_tensor, gen_mask_sequences_tensor, gen_labels_tensor
+        
+        # Clear the dataset result (since it's saved to disk)
+        del dataset_result
+        
+        # Force garbage collection
+        cleanup_memory(verbose=True)
 
-            gen_sample_fig, gen_sample_axes = plt.subplots(2, min(3, gen_sample_seq.shape[0]), figsize=(12, 8))
-            if gen_sample_seq.shape[0] == 1:
-                gen_sample_axes = gen_sample_axes.reshape(2, 1)
+    else:
+        print("⏭️ No dataset generation requested.")
 
-            for gen_vis_idx in range(min(3, gen_sample_seq.shape[0])):
+    print("✅ Dataset generation section completed.")
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md("""## 👁️ **Section 2.5: Dataset Visualization**""")
+    return
+
+
+@app.cell
+def _(mo, os):
+    # Dataset visualization controls
+    viz_available_datasets = ["Select dataset..."] + [f for f in os.listdir("data") if f.endswith('.pt')]
+    viz_dataset_dropdown = mo.ui.dropdown(
+        options=viz_available_datasets,
+        value=viz_available_datasets[0] if viz_available_datasets else "No datasets found",
+        label="Dataset to Visualize"
+    )
+
+    viz_sample_button = mo.ui.button(
+        label="🎲 Show Random Sample", 
+        kind="neutral",
+        value=0,
+        on_click=lambda count: count + 1
+    )
+
+    mo.vstack([
+        mo.md("**Explore your generated datasets by viewing random samples:**"),
+        viz_dataset_dropdown,
+        viz_sample_button
+    ])
+    return viz_dataset_dropdown, viz_sample_button
+
+
+@app.cell
+def _(mo, plt, random, torch, viz_dataset_dropdown, viz_sample_button):
+    # Dataset sample visualization
+    viz_output = None
+
+    if viz_sample_button.value > 0 and viz_dataset_dropdown.value != "Select dataset...":
+        try:
+            # Load the selected dataset
+            viz_dataset_path = f"data/{viz_dataset_dropdown.value}"
+            viz_dataset = torch.load(viz_dataset_path)
+
+            # Get dataset metadata
+            viz_metadata = viz_dataset.get('metadata', {})
+            viz_dataset_type = viz_metadata.get('dataset_type', 'unknown')
+            viz_is_single_frame = 'single_frame' in viz_dataset_type
+
+            print(f"📊 Loading dataset: {viz_dataset_dropdown.value}")
+            print(f"📋 Dataset type: {viz_dataset_type}")
+
+            if viz_is_single_frame:
+                # Single frame dataset
+                viz_images = viz_dataset['images']
+                viz_masks = viz_dataset['masks']
+                viz_labels = viz_dataset['labels']
+
+                # Select random sample
+                viz_sample_idx = random.randint(0, len(viz_images) - 1)
+                viz_sample_img = viz_images[viz_sample_idx].numpy()
+                viz_sample_mask = viz_masks[viz_sample_idx].numpy()
+                viz_sample_label = viz_labels[viz_sample_idx].item()
+
+                print(f"🎯 Sample {viz_sample_idx}: {viz_sample_label} targets")
+                print(f"📏 Image shape: {viz_sample_img.shape}")
+                print(f"📏 Mask shape: {viz_sample_mask.shape}")
+
+                # Create visualization
+                viz_fig, viz_axes = plt.subplots(1, 2, figsize=(12, 6))
+
                 # Show RDM
-                gen_sample_axes[0, gen_vis_idx].imshow(gen_sample_seq[gen_vis_idx], aspect='auto', cmap='viridis', origin='lower')
-                gen_sample_axes[0, gen_vis_idx].set_title(f'Frame {gen_vis_idx+1} RDM')
-                gen_sample_axes[0, gen_vis_idx].set_xlabel('Doppler Bin')
-                gen_sample_axes[0, gen_vis_idx].set_ylabel('Range Bin')
+                viz_axes[0].imshow(viz_sample_img, aspect='auto', cmap='viridis', origin='lower')
+                viz_axes[0].set_title(f'Sample RDM (Label: {viz_sample_label} targets)')
+                viz_axes[0].set_xlabel('Doppler Bin')
+                viz_axes[0].set_ylabel('Range Bin')
+                viz_cbar0 = plt.colorbar(viz_axes[0].images[0], ax=viz_axes[0], label='Normalized Power (dB)')
 
                 # Show mask
-                gen_sample_axes[1, gen_vis_idx].imshow(gen_sample_mask[gen_vis_idx], aspect='auto', cmap='Reds', origin='lower', vmin=0, vmax=1)
-                gen_sample_axes[1, gen_vis_idx].set_title(f'Frame {gen_vis_idx+1} Mask')
-                gen_sample_axes[1, gen_vis_idx].set_xlabel('Doppler Bin')
-                gen_sample_axes[1, gen_vis_idx].set_ylabel('Range Bin')
+                viz_axes[1].imshow(viz_sample_mask, aspect='auto', cmap='Reds', origin='lower', vmin=0, vmax=1)
+                viz_axes[1].set_title(f'Sample Mask (Label: {viz_sample_label} targets)')
+                viz_axes[1].set_xlabel('Doppler Bin')
+                viz_axes[1].set_ylabel('Range Bin')
+                viz_cbar1 = plt.colorbar(viz_axes[1].images[0], ax=viz_axes[1], label='Target Mask')
 
-            plt.suptitle(f'Sample Sequence (Label: {gen_sample_label} targets)')
-            plt.tight_layout()
+                plt.suptitle(f'Dataset: {viz_dataset_dropdown.value} | Sample #{viz_sample_idx}')
+                plt.tight_layout()
 
-        dataset_sample_display = gen_sample_fig
+                # Display dataset info
+                viz_info = mo.md(f"""
+                **📊 Dataset Information:** \t
+                - **Name**: {viz_dataset_dropdown.value} \t
+                - **Type**: {viz_dataset_type} \t
+                - **Total Samples**: {len(viz_images):,} \t
+                - **Sample #{viz_sample_idx}**: {viz_sample_label} targets \t
+                - **Image Shape**: {viz_sample_img.shape} \t
+                - **Classes**: {viz_metadata.get('max_targets', 'unknown')} + 1 (0-{viz_metadata.get('max_targets', 'unknown')} targets) \t
+                - **Target Type**: {viz_metadata.get('target_type', 'unknown')} \t
+
+                *Click '🎲 Show Random Sample' again to see another random sample.*
+                """)
+
+                viz_output = mo.vstack([viz_fig, viz_info])
+
+            else:
+                # Multi-frame dataset
+                viz_sequences = viz_dataset['sequences']
+                viz_mask_sequences = viz_dataset['masks']
+                viz_labels = viz_dataset['labels']
+
+                # Select random sample
+                viz_sample_idx = random.randint(0, len(viz_sequences) - 1)
+                viz_sample_seq = viz_sequences[viz_sample_idx].numpy()
+                viz_sample_mask = viz_mask_sequences[viz_sample_idx].numpy()
+                viz_sample_label = viz_labels[viz_sample_idx].item()
+
+                print(f"🎯 Sample {viz_sample_idx}: {viz_sample_label} targets")
+                print(f"📏 Sequence shape: {viz_sample_seq.shape}")
+                print(f"📏 Mask sequence shape: {viz_sample_mask.shape}")
+
+                # Create visualization
+                viz_n_frames_to_show = min(3, viz_sample_seq.shape[0])
+                viz_fig, viz_axes = plt.subplots(2, viz_n_frames_to_show, figsize=(4*viz_n_frames_to_show, 8))
+
+                if viz_n_frames_to_show == 1:
+                    viz_axes = viz_axes.reshape(2, 1)
+
+                for viz_frame_idx in range(viz_n_frames_to_show):
+                    # Show RDM
+                    viz_axes[0, viz_frame_idx].imshow(viz_sample_seq[viz_frame_idx], aspect='auto', cmap='viridis', origin='lower')
+                    viz_axes[0, viz_frame_idx].set_title(f'Frame {viz_frame_idx+1} RDM')
+                    viz_axes[0, viz_frame_idx].set_xlabel('Doppler Bin')
+                    viz_axes[0, viz_frame_idx].set_ylabel('Range Bin')
+
+                    # Show mask
+                    viz_axes[1, viz_frame_idx].imshow(viz_sample_mask[viz_frame_idx], aspect='auto', cmap='Reds', origin='lower', vmin=0, vmax=1)
+                    viz_axes[1, viz_frame_idx].set_title(f'Frame {viz_frame_idx+1} Mask')
+                    viz_axes[1, viz_frame_idx].set_xlabel('Doppler Bin')
+                    viz_axes[1, viz_frame_idx].set_ylabel('Range Bin')
+
+                plt.suptitle(f'Dataset: {viz_dataset_dropdown.value} | Sample #{viz_sample_idx} | Label: {viz_sample_label} targets')
+                plt.tight_layout()
+
+                # Display dataset info
+                viz_frame_info = f" (showing first {viz_n_frames_to_show} of {viz_sample_seq.shape[0]} frames)" if viz_sample_seq.shape[0] > viz_n_frames_to_show else ""
+                viz_info = mo.md(f"""
+                **📊 Dataset Information:** \t
+                - **Name**: {viz_dataset_dropdown.value} \t
+                - **Type**: {viz_dataset_type} \t
+                - **Total Sequences**: {len(viz_sequences):,} \t
+                - **Sample #{viz_sample_idx}**: {viz_sample_label} targets \t
+                - **Sequence Shape**: {viz_sample_seq.shape}{viz_frame_info} \t
+                - **Classes**: {viz_metadata.get('max_targets', 'unknown')} + 1 (0-{viz_metadata.get('max_targets', 'unknown')} targets) \t
+                - **Target Type**: {viz_metadata.get('target_type', 'unknown')} \t
+                - **Frames per Sequence**: {viz_metadata.get('n_frames', 'unknown')}\t
+
+                *Click '🎲 Show Random Sample' again to see another random sample.*
+                """)
+
+                viz_output = mo.vstack([viz_fig, viz_info])
+
+        except Exception as e:
+            viz_output = mo.md(f"""
+            ❌ **Error loading dataset**: 
+            ```
+            {str(e)}
+            ```
+            Please ensure the dataset file is valid and accessible.
+            """)
+
+    elif viz_sample_button.value > 0:
+        viz_output = mo.md("⚠️ **Please select a dataset first!**")
     else:
-        dataset_sample_display = mo.md("Click 'Generate Dataset' to see a sample.")
+        viz_output = mo.md("**Select a dataset above and click '🎲 Show Random Sample' to visualize data.**")
 
-    dataset_sample_display
+    viz_output
     return
 
 
@@ -910,7 +1178,12 @@ def _(mo, os):
 
     train_model_name = mo.ui.text(value="my_trained_model", label="Model Save Name")
 
-    train_start_button = mo.ui.button(label="🚀 Start Training", kind="success")
+    train_start_button = mo.ui.button(
+        label="🚀 Start Training", 
+        kind="success",
+        value=0,
+        on_click=lambda count: count + 1
+    )
 
     mo.vstack([
         train_dataset_dropdown,
@@ -922,8 +1195,10 @@ def _(mo, os):
 
 @app.cell
 def _(
+    cleanup_memory,
     comprehensive_model_analysis,
     mo,
+    os,
     time,
     torch,
     train_base_filters,
@@ -941,12 +1216,15 @@ def _(
 ):
     # Training execution
     training_output = None
-    if train_start_button.value and train_dataset_dropdown.value != "Select dataset...":
+    if train_start_button.value > 0 and train_dataset_dropdown.value != "Select dataset...":
         print("🚀 Starting model training...")
         training_start_time = time.time()
 
         training_dataset_path = f"data/{train_dataset_dropdown.value}"
         training_model_save_path = f"pretrained/{train_model_name.value}.pt"
+
+        # Ensure pretrained directory exists
+        os.makedirs("pretrained", exist_ok=True)
 
         print(f"📊 Training Configuration:")
         print(f"  • Model: U-Net")
@@ -961,7 +1239,7 @@ def _(
         try:
             # Check if dataset is for segmentation or classification
             training_dataset_check = torch.load(training_dataset_path)
-            training_is_segmentation = 'mask_sequences' in training_dataset_check or 'masks' in training_dataset_check
+            training_is_segmentation = 'masks' in training_dataset_check
 
             if training_is_segmentation:
                 print("🎯 Detected segmentation dataset - proceeding with U-Net training")
@@ -1003,13 +1281,22 @@ def _(
                 print(f"📊 Analysis completed in {training_analysis_time:.1f} seconds!")
                 print(f"📁 Analysis results saved to: analysis_{training_save_dir}/")
 
+                # Clean up memory after training and analysis
+                print("🧹 Cleaning up memory after training...")
+                
+                # Clear loaded dataset variables to free memory
+                del training_dataset_check, training_analysis_results
+                
+                # Force garbage collection and GPU cache clearing
+                cleanup_memory(verbose=True)
+
                 # Display training summary
                 training_output = mo.md(f"""
                 ## 🎉 **Training Summary:**
-                - **Total Time**: {training_time/60:.1f} minutes
-                - **Model Type**: U-Net with {train_base_filters.value} base filters
-                - **Final Model**: `{training_model_save_path}`
-                - **Analysis**: `analysis_{training_save_dir}/`
+                - **Total Time**: {training_time/60:.1f} minutes\t
+                - **Model Type**: U-Net with {train_base_filters.value} base filters\t
+                - **Final Model**: `{training_model_save_path}`\t
+                - **Analysis**: `analysis_{training_save_dir}/`\t
                 - **Training completed successfully!** ✅
                 """)
 
@@ -1017,10 +1304,17 @@ def _(
                 training_output = mo.md("""
                 ❌ **Error**: Dataset appears to be for classification, not segmentation.
 
-                Please generate a multi-frame segmentation dataset first.
+                Please generate a single-frame or multi-frame segmentation dataset first (both include masks).
                 """)
 
         except Exception as e:
+            # Clean up any loaded variables in case of error
+            try:
+                if 'training_dataset_check' in locals():
+                    del training_dataset_check
+            except:
+                pass
+            
             training_output = mo.md(f"""
             ❌ **Training failed with error**: 
             ```
@@ -1029,7 +1323,7 @@ def _(
             Please check your dataset and parameters.
             """)
 
-    elif train_start_button.value:
+    elif train_start_button.value > 0:
         training_output = mo.md("⚠️ **Please select a dataset first!**")
     else:
         training_output = mo.md("Configure parameters above and click '🚀 Start Training' to begin.")
@@ -1046,21 +1340,21 @@ def _(mo):
 
     ### Parameter Guidelines:
 
-    **Sea States (WMO):**
-    - 1: Calm seas (0-0.1m waves)
-    - 3: Slight seas (0.5-1.25m waves)  
-    - 5: Moderate seas (2.5-4m waves)
-    - 7: Rough seas (4-6m waves)
-    - 9: Very rough seas (7-9m waves)
+    **Sea Clutter Parameters:**\t
+    - **Mean Power**: Controls overall clutter intensity (-30 to 30 dB)\t
+    - **Shape Parameter**: Controls clutter distribution (0.01-1.0, lower = more spiky)\t
+    - **AR Coefficient**: Controls temporal correlation (0.7-0.99, higher = more correlated)\t
+    - **Wave Speed**: Affects Doppler spread (0-15 m/s)\t
+    - **Bragg Components**: Simulate ocean wave reflections
 
     **Dataset Types:**
-    - **Single Frame**: For classification tasks (counting targets)
-    - **Multi Frame**: For segmentation tasks (localizing targets)
+    - **Single Frame**: For single-frame segmentation tasks (localizing targets in 1 frame)\t
+    - **Multi Frame**: For multi-frame segmentation tasks (localizing targets across multiple frames)
 
     ### Recommended Settings:
-    - **Learning Rate**: 1e-4 for most cases
-    - **Batch Size**: 16-32 depending on memory
-    - **Loss Weights**: BCE=1.0, Dice=1.0 for balanced training
+    - **Learning Rate**: 1e-4 for most cases\t
+    - **Batch Size**: 16-32 depending on memory\t
+    - **Loss Weights**: BCE=1.0, Dice=1.0 for balanced training\t
     - **Patience**: 10-15 epochs for early stopping
     """
     )
@@ -1073,16 +1367,21 @@ def _(mo):
         """
     ## 🎯 **Usage Tips**
 
-    1. **Start with visualization**: Adjust parameters in Section 1 to understand how they affect sea clutter
-    2. **Generate small datasets first**: Use fewer samples (100-200) for quick testing
-    3. **Monitor training**: Watch the console output for training progress and metrics
-    4. **Experiment with parameters**: Try different model architectures and hyperparameters
-    5. **Check results**: Analysis plots are saved automatically after training
+    1. **Design your data in Section 1**: Adjust radar, clutter, and target parameters to create the desired simulation characteristics\t
+    2. **Visualize before generating**: Use the interactive visualization to understand how parameters affect sea clutter and target visibility\t
+    3. **Generate datasets with tested parameters**: Section 2 automatically uses your Section 1 configuration for dataset generation\t
+    4. **Explore your datasets**: Use Section 2.5 to visualize random samples from any generated dataset\t
+    5. **Start with small datasets**: Use fewer samples (100-200) for quick testing and validation\t
+    6. **Monitor training**: Watch the console output for training progress and metrics\t
+    7. **Evaluate thoroughly**: Use Section 4 to test your trained models comprehensively\t
+    8. **Experiment systematically**: Change one parameter at a time to understand its effect
 
-    **Performance Notes:**
-    - Training time scales with dataset size and model complexity
-    - Larger datasets generally give better performance
-    - Multi-frame models can capture temporal information for better target detection
+    **Performance Notes:**\t
+    - Training time scales with dataset size and model complexity\t
+    - Larger datasets generally give better performance but take longer to generate\t
+    - Multi-frame models can capture temporal information for better target detection\t
+    - SNR significantly affects model performance - test with realistic values\t
+    - Model parameters (channels, filters) must match between training and evaluation
     """
     )
     return

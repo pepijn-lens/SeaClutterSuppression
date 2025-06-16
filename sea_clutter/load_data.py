@@ -51,7 +51,7 @@ class RadarSegmentationDataset(Dataset):
         if 'sequences' in dataset:
             # Sequence data
             self.sequences = dataset['sequences']  # Shape: (N, n_frames, H, W)
-            self.mask_sequences = dataset['mask_sequences']  # Shape: (N, n_frames, H, W)
+            self.mask_sequences = dataset['masks']  # Shape: (N, n_frames, H, W)
             self.is_sequence = True
             self.n_frames = self.sequences.shape[1]
             print(f"Loaded sequence dataset with {self.n_frames} frames per sequence")

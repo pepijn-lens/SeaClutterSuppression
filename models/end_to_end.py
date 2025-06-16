@@ -69,11 +69,11 @@ class ClusteringModule:
 
 class EndToEndTargetDetector(nn.Module):
     """End-to-end model: Range-Doppler map -> Binary segmentation -> Target centroids"""
-    def __init__(self, unet_weights_path=None, clustering_params=None, n_channels=3):
+    def __init__(self, unet_weights_path=None, clustering_params=None, n_channels=3, base_filter_size=64):
         super(EndToEndTargetDetector, self).__init__()
         
         # Initialize U-Net with your architecture
-        self.unet = UNet(n_channels=n_channels, n_classes=1)  # Changed to n_classes=1 for segmentation
+        self.unet = UNet(n_channels=n_channels, n_classes=1, base_filters=base_filter_size)  # Changed to n_classes=1 for segmentation
         
         # Load pre-trained weights if provided
         if unet_weights_path:

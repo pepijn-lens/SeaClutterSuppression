@@ -88,8 +88,8 @@ def plot_performance_analysis(results, save_path='end_to_end_analysis/performanc
     axes[1].set_xlabel('Absolute Error (|Predicted - Ground Truth|)')
     axes[1].set_ylabel('Frequency')
     axes[1].set_title(f'Error Distribution\n(MAE = {results["mean_absolute_error"]:.2f})')
-    axes[1].set_ylim(0, 3000)
-    axes[1].set_xlim(0, ground_truth.max() - ground_truth.max()//2)
+    # axes[1].set_ylim(0, 3000)
+    # axes[1].set_xlim(0, ground_truth.max() - ground_truth.max()//2)
     axes[1].grid(True, alpha=0.3)
     
     # 3. Target count distributions
@@ -99,8 +99,8 @@ def plot_performance_analysis(results, save_path='end_to_end_analysis/performanc
     axes[2].set_xlabel('Target Count')
     axes[2].set_ylabel('Frequency')
     axes[2].set_title('Target Count Distributions')
-    axes[2].set_xlim(0, ground_truth.max() + 1)
-    axes[2].set_ylim(0, len_predicted // 10 + np.ceil(len_predicted * 0.04))
+    # axes[2].set_xlim(0, ground_truth.max() + 1)
+    # axes[2].set_ylim(0, len_predicted // 10 + np.ceil(len_predicted * 0.04))
     axes[2].legend()
     axes[2].grid(True, alpha=0.3)
     

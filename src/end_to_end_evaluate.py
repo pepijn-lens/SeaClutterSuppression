@@ -5,7 +5,7 @@ from sea_clutter import create_data_loaders
 from .end_to_end_helper import plot_performance_analysis, print_performance_report, evaluate_target_count_performance, show_dataset_stats, analyze_single_sample
 import models
 
-def comprehensive_evaluation(dataset_path, model_path, save='multi_frame', clustering_params=None):
+def comprehensive_evaluation(dataset_path, model_path, base_filter_size, save='multi_frame', clustering_params=None):
     """Run a comprehensive evaluation of the end-to-end model using test data"""
     
     # Create data loaders same as in training
@@ -37,6 +37,7 @@ def comprehensive_evaluation(dataset_path, model_path, save='multi_frame', clust
     model = models.EndToEndTargetDetector(
         unet_weights_path=model_path,
         n_channels=n_channels,
+        base_filter_size=base_filter_size,  # Default base filter size
         clustering_params=clustering_params or {'min_area': 3, 'eps': 1, 'min_samples': 1}
     ).to('mps')  # Move model to MPS
     
@@ -52,7 +53,7 @@ def comprehensive_evaluation(dataset_path, model_path, save='multi_frame', clust
     
     return results
 
-def interactive_sample_explorer(dataset_path, model_path, clustering_params=None):
+def interactive_sample_explorer(dataset_path, model_path, base_filter_size, clustering_params=None):
     """
     Interactive method to explore samples from the dataset using the end-to-end target detector
     """
@@ -78,6 +79,7 @@ def interactive_sample_explorer(dataset_path, model_path, clustering_params=None
     model = models.EndToEndTargetDetector(
         unet_weights_path=model_path,
         n_channels=n_channels,
+        base_filter_size=base_filter_size,  # Default base filter size
         clustering_params=clustering_params or {'min_area': 3, 'eps': 1, 'min_samples': 1}
     )
     
@@ -134,12 +136,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate the end-to-end detector")
     parser.add_argument("--dataset", type=str, required=True, help="Path to the evaluation dataset")
     parser.add_argument("--model", type=str, required=True, help="Path to the trained U-Net weights")
+    parser.add_argument("--base-filter-size", type=int, default=64, help="Base filter size for the U-Net model")
     parser.add_argument("--save-path", type=str, default="end_to_end_results",
                         help="Directory where evaluation figures will be saved")
     parser.add_argument("--cluster-min-area", type=int, default=3, help="Minimum area for a cluster to be valid")
     parser.add_argument("--cluster-eps", type=float, default=1.0, help="DBSCAN eps parameter")
     parser.add_argument("--cluster-min-samples", type=int, default=1, help="DBSCAN min_samples parameter")
     parser.add_argument("--interactive", action="store_true", help="Launch interactive sample explorer after evaluation")
+
 
     args = parser.parse_args()
 
@@ -149,16 +153,18 @@ if __name__ == "__main__":
         'min_samples': args.cluster_min_samples,
     }
 
-    # comprehensive_evaluation(
-    #     args.dataset,
-    #     args.model,
-    #     save=args.save_path,
-    #     clustering_params=clustering,
-    # )
+    comprehensive_evaluation(
+        args.dataset,
+        args.model,
+        save=args.save_path,
+        base_filter_size=args.base_filter_size,
+        clustering_params=clustering,
+    )
 
     if args.interactive:
         interactive_sample_explorer(
             args.dataset,
             args.model,
+            args.base_filter_size,
             clustering_params=clustering,
         )
