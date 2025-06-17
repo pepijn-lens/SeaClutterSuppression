@@ -44,8 +44,10 @@ Evaluate the trained detector:
 python -m src.end_to_end_evaluate --help
 ```
 ### Marimo Notebook usage
-This repository includes a Marimo notebook which allows its users to design their own sea cluttered Range Doppler maps, generate a dataset and finally train a Unet on it. Use the following command to run: marimo run sea_clutter_interactive_notebook.py
-
+This repository includes a Marimo notebook which allows its users to design their own sea cluttered Range Doppler maps, generate a dataset and finally train a Unet on it. Use the following command to run: 
+```bash
+marimo run sea_clutter_interactive_notebook.py
+```
 
 ## Acknowledgments
 
