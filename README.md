@@ -24,65 +24,28 @@ This work demonstrates how AI, particularly deep learning, can be applied to rea
 - source venv/bin/activate # or venv\Scripts\activate on Windows
 - pip install -r requirements.txt
 
-
-### Dependencies
-
-- Python
-- PyTorch
-- NumPy
-- SciPy
-- StoneSoup
-
 ##  Usage
 
 ### Script Usage
+Run the following commands to find explanations on how to use this software
 
 Generate data directly:
 ```bash
-python -m src.generate_data.py --samples 2000 --max-targets 10 --sea-state 5 --frames 1 --save-path data/dataset.pt
+python -m src.generate_data --help
 ```
 
 Train a U-Net from the dataset:
 ```bash
-python -m src.unet_training.py --dataset-path data/dataset.pt --n-channels 1 --epochs 50 --batch-size 32 --lr 1e-4 --model-save-path pretrained/unet.pt
+python -m src.unet_training --help
 ```
 
 Evaluate the trained detector:
 ```bash
-python -m src.end_to_end_evaluate.py --dataset data/dataset.pt --model pretrained/unet.pt --save-path end_to_end_results --cluster-min-area 3 --cluster-eps 1 --cluster-min-samples 1 --interactive
+python -m src.end_to_end_evaluate --help
 ```
+### Marimo Notebook usage
+This repository includes a Marimo notebook which allows its users to design their own sea cluttered Range Doppler maps, generate a dataset and finally train a Unet on it. Use the following command to run: marimo run sea_clutter_interactive_notebook.py
 
-
-## Project Structure
-```plaintext
-.
-├── results/          # Images and plots of the findings
-├── evaluation/       # Results and metrics of model performance  
-├── optuna/           # Hyperparameter tuning logs  
-├── sea_clutter/      # Sea clutter simulation scripts  
-├── training/         # Training pipelines for different models  
-├── helper.py         # Utility functions  
-├── radar.py          # Synthetic radar data generation (no clutter)  
-└── requirements.txt  # Project dependencies  
-```
-
-## Documentation
-
-Refer to my thesis for detailed background, methodology, and experimental results:
-
-📄 **[Thesis Link](#)** 
-
-## Built With
-
-- Python
-- PyTorch
-- NumPy
-- SciPy
-- StoneSoup
-
-## License
-
-This repository is under a **proprietary license**. Please contact the author for usage inquiries.
 
 ## Acknowledgments
 
@@ -97,4 +60,3 @@ I would like to thank my supervisors:
 
 - Integration of hybrid Swin Transformer U-Net architecture
 - Training on real-world radar datasets
-- Data augmentation with GANs
