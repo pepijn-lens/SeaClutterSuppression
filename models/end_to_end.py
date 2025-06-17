@@ -77,7 +77,7 @@ class EndToEndTargetDetector(nn.Module):
         
         # Load pre-trained weights if provided
         if unet_weights_path:
-            self.unet.load_state_dict(torch.load(unet_weights_path, map_location='mps'))
+            self.unet.load_state_dict(torch.load(unet_weights_path, map_location='mps' if torch.backends.mps.is_available() else 'cpu'))
         
         # Move model to MPS
         self.device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')

@@ -189,7 +189,7 @@ def evaluate_target_count_performance(model, data_loader, dataset_name="test"):
             
             # Process each sample in the batch
             for i in range(images.shape[0]):
-                range_doppler_map = images[i].to('mps')
+                range_doppler_map = images[i].to('mps' if torch.backends.mps.is_available() else 'cpu')
                 ground_truth_mask = masks[i]
                 
                 # Get predictions

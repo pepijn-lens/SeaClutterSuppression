@@ -4,6 +4,7 @@ import numpy as np
 from sea_clutter import create_data_loaders
 from .end_to_end_helper import plot_performance_analysis, print_performance_report, evaluate_target_count_performance, show_dataset_stats, analyze_single_sample
 import models
+import torch
 
 def comprehensive_evaluation(dataset_path, model_path, base_filter_size, save='multi_frame', clustering_params=None):
     """Run a comprehensive evaluation of the end-to-end model using test data"""
@@ -39,7 +40,7 @@ def comprehensive_evaluation(dataset_path, model_path, base_filter_size, save='m
         n_channels=n_channels,
         base_filter_size=base_filter_size,  # Default base filter size
         clustering_params=clustering_params or {'min_area': 3, 'eps': 1, 'min_samples': 1}
-    ).to('mps')  # Move model to MPS
+    ).to('mps' if torch.backends.mps.is_available() else 'cpu')  # Move model to MPS
     
     # Evaluate performance on test data
     print("Running comprehensive evaluation on test data...")
