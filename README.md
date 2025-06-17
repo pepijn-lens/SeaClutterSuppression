@@ -58,7 +58,7 @@ I would like to thank my supervisors:
 - Peter van der Putten
 - Daan Pelt
 
-## 🔭 Future Work
+## Future Work
 
 - Integration of hybrid Swin Transformer U-Net architecture
 - Training on real-world radar datasets
