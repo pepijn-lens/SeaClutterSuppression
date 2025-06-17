@@ -1,7 +1,7 @@
 env/
-data/
-pretrained/
 .venv/
+
+local*
 
 # Ignore Python cache files
 *__pycache__/
