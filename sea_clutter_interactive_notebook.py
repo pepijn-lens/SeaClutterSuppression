@@ -1213,13 +1213,13 @@ def _(mo, models, train_base_filters, train_n_channels):
         ## 🧠 **U-Net Model Configuration**
         
         **Architecture:**
-        - Input Channels: **{model_info['n_channels']}** {'(Single Frame)' if model_info['n_channels'] == 1 else '(Multi-Frame)'}
-        - Base Filters: **{model_info['base_filters']}**
+        - Input Channels: **{model_info['n_channels']}** {'(Single Frame)' if model_info['n_channels'] == 1 else '(Multi-Frame)'}\t
+        - Base Filters: **{model_info['base_filters']}**\t
         
         **Parameters:**
-        - Trainable Parameters: **{model_info['trainable_params']:,}**
-        - Total Parameters: **{model_info['total_params']:,}**
-        - Estimated Model Size: **{model_info['model_size_mb']:.1f} MB**
+        - Trainable Parameters: **{model_info['trainable_params']:,}**\t
+        - Total Parameters: **{model_info['total_params']:,}**\t
+        - Estimated Model Size: **{model_info['model_size_mb']:.1f} MB**\t
         
         *Note: Model will be created with these parameters when training starts.*
         """
@@ -1488,7 +1488,7 @@ def _(
     elif train_start_button.value > 0:
         training_output = mo.md("⚠️ **Please select a dataset first!**")
     else:
-        training_output = mo.md("Configure parameters above and click '🚀 Start Training' to begin.")
+        training_output = mo.md("Configure parameters above and click '🚀 Start Training' to begin. Note that training may take a while depending on the number of epochs, samples in dataset and model complexity. When training has finished, the performance of the model is measured and shown automatically.")
 
     training_output
     return
@@ -1532,11 +1532,27 @@ def _(mo):
     6. **Monitor training**: Watch the console output for training progress and metrics\t
 
     **Performance Notes:**\t
-    - Training time scales with dataset size and model complexity\t
-    - Larger datasets generally give better performance but take longer to generate\t
-    - Multi-frame models can capture temporal information for better target detection\t
+    - Training time scales with dataset size and model complexity \t
+    - Larger datasets generally give better performance but take longer to generate \t
+    - Multi-frame models can capture temporal information for better target detection \t
     - SNR significantly affects model performance - test with realistic values\t
     - Model parameters (channels, filters) must match between training and evaluation
+    """
+    )
+    return
+
+@app.cell
+def _(mo):
+    mo.md(
+        """
+    ## **Credits and Feedback**
+
+    This notebook and the underlying software were created by **Pepijn Lens**.
+
+    - **Contribute or report issues:** Github repository
+    - **Contact:** pepijn.lens@tno.nl
+
+    Contributions, suggestions, and feedback are welcome!
     """
     )
     return
