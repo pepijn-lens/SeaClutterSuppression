@@ -57,11 +57,30 @@ class RadarDataset(Dataset):
             # Use time dimension as channel dimension: (n_frames, height, width)
             sequence = self.data_tensor[idx]
             sequence = sequence[:-1]  # Shape: (4, 128, 128)
+            
+            # Apply normalization to each frame (data is stored in dB scale)
+            normalized_sequence = []
+            for frame_idx in range(sequence.shape[0]):
+                frame = sequence[frame_idx]
+                # Normalize with frame's own statistics
+                normalized_frame = (frame - frame.mean()) / (frame.std() + 1e-10)
+                normalized_sequence.append(normalized_frame)
+            
+            sequence = torch.stack(normalized_sequence, dim=0)
             label = self.label_tensor[idx]
             return sequence, label
         else:
             # For single images: add channel dimension (1, height, width)
             image = self.data_tensor[idx]
+            
+            # Apply normalization (data is stored in dB scale)
+            if len(image.shape) == 2:  # Single frame
+                normalized_image = (image - image.mean()) / (image.std() + 1e-10)
+                image = normalized_image.unsqueeze(0)  # Add channel dimension
+            else:  # Already has channel dimension
+                normalized_image = (image - image.mean()) / (image.std() + 1e-10)
+                image = normalized_image
+            
             label = self.label_tensor[idx]
             return image, label
     

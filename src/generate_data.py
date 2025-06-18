@@ -8,137 +8,6 @@ import sea_clutter
 MIN_RANGE = 30  # Minimum range for targets
 MAX_RANGE = 128 - 30  # Maximum range for targets
 
-def generate_single_frame_with_targets(
-    rp: sea_clutter.RadarParams,
-    cp: sea_clutter.ClutterParams,
-    n_targets: int,
-    *,
-    thermal_noise_db: float = 1,
-    target_signal_power: float = None,
-    target_type: sea_clutter.TargetType = sea_clutter.TargetType.FIXED
-) -> np.ndarray:
-    """Generate a single range-Doppler map with specified number of targets."""
-    
-    # Generate sea clutter with user-controlled noise power
-    clutter_td, _, _ = sea_clutter.simulate_sea_clutter(rp, cp, thermal_noise_db=thermal_noise_db)
-    
-    # Generate random targets if needed
-    if n_targets > 0:
-        targets = [
-            sea_clutter.create_realistic_target(target_type, random.randint(MIN_RANGE, MAX_RANGE), rp) 
-            for _ in range(n_targets)
-        ]
-        
-        # Add each target to the clutter data
-        for tgt in targets:
-            # Override target power with user-controlled value if provided
-            target_power = target_signal_power if target_signal_power is not None else tgt.power
-            
-            simple_target = sea_clutter.Target(
-                rng_idx=tgt.rng_idx,
-                doppler_hz=tgt.doppler_hz,
-                power=target_power,
-                size=getattr(tgt, 'size', 1)  # Include target size
-            )
-            sea_clutter.add_target_blob(clutter_td, simple_target, rp)
-    
-    # Compute range-Doppler map
-    rdm = sea_clutter.compute_range_doppler(clutter_td, rp, cp)
-    
-    return rdm
-
-def generate_classification_dataset(
-    samples_per_class: int = 2000,
-    max_targets: int = 5,
-    sea_state: int = 5,
-    save_path: str = "sea_clutter_classification_dataset.pt"
-) -> None:
-    """
-    Generate dataset for target count classification.
-    
-    Args:
-        samples_per_class: Number of samples to generate per class
-        max_targets: Maximum number of targets (classes will be 0 to max_targets)
-        sea_state: WMO sea state to use
-        save_path: Path to save the PyTorch file
-    """
-    
-    # Initialize parameters
-    rp = sea_clutter.RadarParams()
-    cp = sea_clutter.get_clutter_params_for_sea_state(sea_state)
-    
-    # Set single frame
-    sp = sea_clutter.SequenceParams()
-    
-    print(f"Generating dataset with {samples_per_class} samples per class")
-    print(f"Classes: 0 to {max_targets} targets")
-    print(f"Sea state: {sea_state}")
-    print(f"Range-Doppler map size: {rp.n_ranges} x {rp.n_pulses}")
-    
-    # Storage for data and labels
-    all_images = []
-    all_labels = []
-    
-    # Generate data for each class
-    for n_targets in range(max_targets + 1):
-        print(f"\nGenerating {samples_per_class} samples for {n_targets} targets...")
-        
-        class_images = []
-        class_labels = []
-        
-        for i in tqdm(range(samples_per_class), desc=f"Class {n_targets}"):
-            # Generate single RDM
-            rdm = generate_single_frame_with_targets(rp, cp, n_targets)
-
-            # to dB scale and normalize with mean and std
-            rdm = 20 * np.log10(np.abs(rdm) + 1e-10)  # Avoid log(0)
-            rdm = (rdm - np.mean(rdm)) / np.std(rdm) + 1e-10
-
-            # plt.figure()
-            # plt.imshow(rdm, aspect='auto', origin='lower', cmap='viridis')
-            # plt.show()
-
-            # Store image and label
-            class_images.append(rdm)
-            class_labels.append(n_targets)
-        
-        all_images.extend(class_images)
-        all_labels.extend(class_labels)
-    
-    # Convert to numpy arrays
-    images = np.array(all_images)  # Shape: (total_samples, n_ranges, n_doppler_bins)
-    labels = np.array(all_labels)  # Shape: (total_samples,)
-    
-    print(f"\nDataset generated!")
-    print(f"Total samples: {len(images)}")
-    print(f"Image shape: {images.shape}")
-    print(f"Labels shape: {labels.shape}")
-    
-    # Convert to PyTorch tensors
-    images_tensor = torch.from_numpy(images).float()
-    labels_tensor = torch.from_numpy(labels).long()
-    
-    # Create dataset dictionary
-    dataset = {
-        'images': images_tensor,
-        'labels': labels_tensor,
-        'metadata': {
-            'samples_per_class': samples_per_class,
-            'max_targets': max_targets,
-            'sea_state': sea_state,
-            'n_ranges': rp.n_ranges,
-            'n_doppler_bins': rp.n_pulses,
-            'range_resolution': rp.range_resolution,
-            'class_names': [f"{i}_targets" for i in range(max_targets + 1)]
-        }
-    }
-    
-    # Save to file
-    torch.save(dataset, save_path)
-    print(f"\nDataset saved to: {save_path}")
-    print(f"File size: {torch.load(save_path)['images'].element_size() * torch.load(save_path)['images'].nelement() / (1024**2):.1f} MB")
-
-
 
 def simulate_sequence_with_realistic_targets_and_masks(
     rp: sea_clutter.RadarParams,
@@ -292,10 +161,10 @@ def generate_segmentation_dataset_with_sequences(
             processed_mask_sequence = []
             
             for rdm, mask in zip(rdm_list, mask_list):
-                # Convert to dB scale and normalize
+                # Convert to dB scale only (no normalization at storage time)
+                # Normalization will be applied during data loading for training/evaluation
                 rdm_db = 20 * np.log10(np.abs(rdm) + 1e-10)
-                rdm_normalized = (rdm_db - np.mean(rdm_db)) / (np.std(rdm_db) + 1e-10)
-                processed_sequence.append(rdm_normalized)
+                processed_sequence.append(rdm_db)
                 processed_mask_sequence.append(mask)
             
             # Stack frames into sequence arrays
@@ -337,6 +206,7 @@ def generate_segmentation_dataset_with_sequences(
             'n_doppler_bins': rp.n_pulses,
             'range_resolution': rp.range_resolution,
             'class_names': [f"{i}_targets" for i in range(max_targets + 1)],
+            'data_format': 'dB_scale',  # Data is stored in dB scale, normalization applied during loading
             'dataset_type': 'sequence_segmentation'
         }
     }

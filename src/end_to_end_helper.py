@@ -4,6 +4,8 @@ import numpy as np
 import cv2
 import os
 from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
 
 def count_ground_truth_targets(ground_truth_mask, min_area=3):
     """
@@ -60,29 +62,30 @@ def print_performance_report(results):
     print(f"  Correlation coefficient: {results['correlation']:.3f}")
     print(f"  R² score: {results['r2_score']:.3f}")
 
-def plot_performance_analysis(results, save_path='end_to_end_analysis/performance_analysis.png'):
+def plot_performance_analysis(results, save_path=None, marimo=False):
     """Create comprehensive performance analysis plots"""
-    
-    os.makedirs(save_path, exist_ok=True)
+    if save_path is None and not marimo:
+        os.makedirs(save_path, exist_ok=True)
     fig, axes = plt.subplots(2, 3, figsize=(18, 12))
     axes = axes.flatten()
     
     predicted = results['predicted_counts']
     ground_truth = results['ground_truth_counts']
     abs_errors = results['absolute_errors']
+    
+    # 1. Confusion matrix: Predicted vs Ground Truth
 
-    len_predicted = len(predicted)
-    
-    # 1. Scatter plot: Predicted vs Ground Truth
-    axes[0].scatter(ground_truth, predicted, alpha=0.6, s=50)
-    axes[0].plot([0, max(ground_truth.max(), predicted.max())], 
-                 [0, max(ground_truth.max(), predicted.max())], 'r--', alpha=0.8, label='Perfect Prediction')
-    axes[0].set_xlabel('Ground Truth Target Count')
-    axes[0].set_ylabel('Predicted Target Count')
-    axes[0].set_title(f'Predicted vs Ground Truth\n(r = {results["correlation"]:.3f}, R² = {results["r2_score"]:.3f})')
-    axes[0].legend()
-    axes[0].grid(True, alpha=0.3)
-    
+    # Compute confusion matrix
+    max_count = max(ground_truth.max(), predicted.max())
+    labels = np.arange(0, max_count + 1)
+    cm = confusion_matrix(ground_truth, predicted, labels=labels)
+
+    # Plot confusion matrix as heatmap
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=axes[0],
+                xticklabels=labels, yticklabels=labels, cbar=True)
+    axes[0].set_xlabel('Predicted Target Count')
+    axes[0].set_ylabel('Ground Truth Target Count')
+    axes[0].set_title('Confusion Matrix\n(Predicted vs Ground Truth)')
     # 2. Error distribution
     axes[1].hist(abs_errors, bins=range(int(abs_errors.max()) + 2), alpha=0.7, edgecolor='black')
     axes[1].set_xlabel('Absolute Error (|Predicted - Ground Truth|)')
@@ -156,6 +159,8 @@ def plot_performance_analysis(results, save_path='end_to_end_analysis/performanc
     if save_path:
         plt.savefig(f'{save_path}/target_count.png', dpi=300, bbox_inches='tight')
         print(f"Performance analysis saved to {save_path}")
+    elif marimo:
+        return fig
     else:
         plt.show()
     
@@ -230,7 +235,17 @@ def evaluate_target_count_performance(model, data_loader, dataset_name="test"):
     mean_abs_error = np.mean(absolute_errors)
     std_abs_error = np.std(absolute_errors)
     mean_rel_error = np.mean(relative_errors)
-    correlation = np.corrcoef(predicted_counts, ground_truth_counts)[0, 1]
+    
+    # Handle correlation calculation with zero standard deviation
+    if np.std(predicted_counts) == 0 or np.std(ground_truth_counts) == 0:
+        # If either array has zero variance, correlation is undefined
+        correlation = np.nan if np.std(predicted_counts) != np.std(ground_truth_counts) else 1.0
+    else:
+        correlation = np.corrcoef(predicted_counts, ground_truth_counts)[0, 1]
+    
+    # Handle NaN correlation for display
+    if np.isnan(correlation):
+        correlation = 0.0
     
     mse = mean_squared_error(ground_truth_counts, predicted_counts)
     rmse = np.sqrt(mse)

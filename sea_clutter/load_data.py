@@ -143,15 +143,26 @@ class RadarSegmentationDataset(Dataset):
         if not self.visualize:
             mask_sequence = mask_sequence[-1]  # Take the last frame mask by default
 
+        # Apply normalization to the sequence data (data is stored in dB scale)
+        # Normalize each frame independently with its own mean and std
+        normalized_sequence = []
+        for frame_idx in range(sequence.shape[0]):
+            frame = sequence[frame_idx]
+            # Normalize with frame's own statistics
+            normalized_frame = (frame - frame.mean()) / (frame.std() + 1e-10)
+            normalized_sequence.append(normalized_frame)
+        
+        normalized_sequence = torch.stack(normalized_sequence, dim=0)
+
         # For sequence data, use all frames as channels
         if self.is_sequence:
             # Use all frames as channels: (n_frames, H, W) = (3, H, W)
-            image = sequence  # Shape: (3, H, W) for 3-frame sequences
+            image = normalized_sequence  # Shape: (3, H, W) for 3-frame sequences
             mask = mask_sequence.unsqueeze(0)  # Shape: (1, H, W) - single channel mask
         else:
             # Single frame data, add channel dimension
-            image = sequence[0].unsqueeze(0)  # Shape: (1, H, W) - single channel
-            mask = mask[0].unsqueeze(0)  # Shape: (1, H, W) - single channel
+            image = normalized_sequence[0].unsqueeze(0)  # Shape: (1, H, W) - single channel
+            mask = mask_sequence.unsqueeze(0)  # Shape: (1, H, W) - single channel
         
         # Keep mask as single channel without extra dimension
         # mask stays as (H, W) - U-Net expects this for binary segmentation

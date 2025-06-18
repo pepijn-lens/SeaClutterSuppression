@@ -6,7 +6,7 @@ from .end_to_end_helper import plot_performance_analysis, print_performance_repo
 import models
 import torch
 
-def comprehensive_evaluation(dataset_path, model_path, base_filter_size, save='multi_frame', clustering_params=None):
+def comprehensive_evaluation(dataset_path, model_path, base_filter_size, save=None, clustering_params=None, marimo_var = False):
     """Run a comprehensive evaluation of the end-to-end model using test data"""
     
     # Create data loaders same as in training
@@ -39,18 +39,17 @@ def comprehensive_evaluation(dataset_path, model_path, base_filter_size, save='m
         unet_weights_path=model_path,
         n_channels=n_channels,
         base_filter_size=base_filter_size,  # Default base filter size
-        clustering_params=clustering_params or {'min_area': 3, 'eps': 1, 'min_samples': 1}
+        clustering_params=clustering_params or {'min_area': 1, 'eps': 1, 'min_samples': 1}
     ).to('mps' if torch.backends.mps.is_available() else 'cpu')  # Move model to MPS
     
     # Evaluate performance on test data
     print("Running comprehensive evaluation on test data...")
     results = evaluate_target_count_performance(model, eval_loader, eval_dataset_name)
     
-    # Print report
-    print_performance_report(results)
+    # # Print report
+    # print_performance_report(results)
     
-    # Create plots
-    plot_performance_analysis(results, save_path=f'end_to_end_analysis/{save}')
+    results = plot_performance_analysis(results, save_path=None, marimo= marimo_var)
     
     return results
 

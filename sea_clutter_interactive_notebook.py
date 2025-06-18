@@ -21,7 +21,8 @@ def _():
     import models
     from src.generate_data import simulate_sequence_with_realistic_targets_and_masks
     from src.simulation import simulate_sequence_with_realistic_targets
-    from src.unet_training import train_model, comprehensive_model_analysis
+    from src.unet_training import train_model
+    from src.end_to_end_evaluate import comprehensive_evaluation
 
     # Memory management utility function
     def cleanup_memory(verbose=True):
@@ -58,7 +59,7 @@ def _():
     
     return (
         cleanup_memory,
-        comprehensive_model_analysis,
+        comprehensive_evaluation,
         gc,
         get_memory_usage,
         mo,
@@ -119,7 +120,7 @@ def _(cleanup_memory, mo):
     )
     
     cleanup_button
-    return cleanup_button,
+    return cleanup_button
 
 
 @app.cell
@@ -599,8 +600,9 @@ def _(
     time,
     torch,
 ):
-    # Dataset generation logic
-    dataset_result = None
+    # Dataset generation logic - stored as variable instead of file
+    generated_dataset = None
+    dataset_size_gb = 0.0
 
     # Create a global variable to track the last generation button value
     import __main__
@@ -617,11 +619,6 @@ def _(
 
         print("🔄 Starting dataset generation...")
         gen_start_time = time.time()
-
-        gen_save_path = f"data/{dataset_name.value}.pt"
-
-        # Create data directory if it doesn't exist
-        os.makedirs("data", exist_ok=True)
 
         # Determine dataset type based on number of frames
         is_single_frame = dataset_n_frames.value == 1
@@ -705,12 +702,12 @@ def _(
                     gen_rdm = gen_rdm_list[0]
                     gen_mask = gen_mask_list[0]
 
-                    # Convert to dB scale and normalize
+                    # Convert to dB scale only (no normalization at storage time)
+                    # Normalization will be applied during data loading for training/evaluation
                     gen_rdm_db = 20 * np.log10(np.abs(gen_rdm) + 1e-10)
-                    gen_rdm_normalized = (gen_rdm_db - np.mean(gen_rdm_db)) / (np.std(gen_rdm_db) + 1e-10)
 
                     # Store image, mask and label
-                    gen_all_images.append(gen_rdm_normalized)
+                    gen_all_images.append(gen_rdm_db)
                     gen_all_masks.append(gen_mask)
                     gen_all_labels.append(n_targets)
 
@@ -724,8 +721,8 @@ def _(
             gen_masks_tensor = torch.from_numpy(gen_masks).float()
             gen_labels_tensor = torch.from_numpy(gen_labels).long()
 
-            # Create dataset dictionary
-            dataset_result = {
+            # Create dataset dictionary - stored in memory
+            generated_dataset = {
                 'images': gen_images_tensor,
                 'masks': gen_masks_tensor,
                 'labels': gen_labels_tensor,
@@ -753,6 +750,7 @@ def _(
                         'snr_db': target_signal_power.value - noise_power.value
                     },
                     'class_names': [f"{targets_idx}_targets" for targets_idx in range(dataset_max_targets.value + 1)],
+                    'data_format': 'dB_scale',  # Data is stored in dB scale, normalization applied during loading
                     'dataset_type': 'single_frame_segmentation'
                 }
             }
@@ -838,10 +836,10 @@ def _(
                     gen_processed_mask_sequence = []
 
                     for gen_rdm, gen_mask in zip(gen_rdm_list, gen_mask_list):
-                        # Convert to dB scale and normalize
+                        # Convert to dB scale only (no normalization at storage time)
+                        # Normalization will be applied during data loading for training/evaluation
                         gen_rdm_db = 20 * np.log10(np.abs(gen_rdm) + 1e-10)
-                        gen_rdm_normalized = (gen_rdm_db - np.mean(gen_rdm_db)) / (np.std(gen_rdm_db) + 1e-10)
-                        gen_processed_sequence.append(gen_rdm_normalized)
+                        gen_processed_sequence.append(gen_rdm_db)
                         gen_processed_mask_sequence.append(gen_mask)
 
                     # Stack frames into sequence arrays
@@ -863,8 +861,8 @@ def _(
             gen_mask_sequences_tensor = torch.from_numpy(gen_mask_sequences).float()
             gen_labels_tensor = torch.from_numpy(gen_labels).long()
 
-            # Create dataset dictionary
-            dataset_result = {
+            # Create dataset dictionary - stored in memory
+            generated_dataset = {
                 'sequences': gen_sequences_tensor,
                 'masks': gen_mask_sequences_tensor,
                 'labels': gen_labels_tensor,
@@ -892,34 +890,37 @@ def _(
                         'snr_db': target_signal_power.value - noise_power.value
                     },
                     'class_names': [f"{targets_idx}_targets" for targets_idx in range(dataset_max_targets.value + 1)],
+                    'data_format': 'dB_scale',  # Data is stored in dB scale, normalization applied during loading
                     'dataset_type': 'sequence_segmentation'
                 }
             }
 
-        # Save dataset
-        torch.save(dataset_result, gen_save_path)
+        # Calculate dataset size in GB
+        total_bytes = 0
+        if is_single_frame:
+            total_bytes += generated_dataset['images'].element_size() * generated_dataset['images'].nelement()
+            total_bytes += generated_dataset['masks'].element_size() * generated_dataset['masks'].nelement()
+        else:
+            total_bytes += generated_dataset['sequences'].element_size() * generated_dataset['sequences'].nelement()
+            total_bytes += generated_dataset['masks'].element_size() * generated_dataset['masks'].nelement()
+        
+        total_bytes += generated_dataset['labels'].element_size() * generated_dataset['labels'].nelement()
+        dataset_size_gb = total_bytes / (1024**3)  # Convert to GB
 
         gen_end_time = time.time()
         gen_generation_time = gen_end_time - gen_start_time
 
         print(f"✅ Dataset generation completed in {gen_generation_time:.1f} seconds!")
-        print(f"📁 Dataset saved to: {gen_save_path}")
+        print(f"� Dataset stored in memory (size: {dataset_size_gb:.3f} GB)")
 
         if is_single_frame:
-            gen_file_size = torch.load(gen_save_path)['images'].element_size() * torch.load(gen_save_path)['images'].nelement() / (1024**2)
-            print(f"💾 File size: {gen_file_size:.1f} MB")
-            print(f"📈 Dataset shape: {dataset_result['images'].shape}")
-            print(f"📈 Masks shape: {dataset_result['masks'].shape}")
+            print(f"📈 Dataset shape: {generated_dataset['images'].shape}")
+            print(f"� Masks shape: {generated_dataset['masks'].shape}")
         else:
-            gen_file_size = os.path.getsize(gen_save_path) / (1024**2)
-            print(f"💾 File size: {gen_file_size:.1f} MB")
-            print(f"📈 Sequences shape: {dataset_result['sequences'].shape}")
-            print(f"📈 Masks shape: {dataset_result['masks'].shape}")
+            print(f"📈 Sequences shape: {generated_dataset['sequences'].shape}")
+            print(f"📈 Masks shape: {generated_dataset['masks'].shape}")
 
-        # Clean up memory after dataset generation
-        print("🧹 Cleaning up memory after dataset generation...")
-        
-        # Clear large variables
+        # Clean up temporary variables
         if is_single_frame:
             del gen_all_images, gen_all_masks, gen_all_labels
             del gen_images, gen_masks, gen_labels
@@ -929,9 +930,6 @@ def _(
             del gen_sequences, gen_mask_sequences, gen_labels
             del gen_sequences_tensor, gen_mask_sequences_tensor, gen_labels_tensor
         
-        # Clear the dataset result (since it's saved to disk)
-        del dataset_result
-        
         # Force garbage collection
         cleanup_memory(verbose=True)
 
@@ -939,7 +937,7 @@ def _(
         print("⏭️ No dataset generation requested.")
 
     print("✅ Dataset generation section completed.")
-    return
+    return dataset_size_gb, generated_dataset
 
 
 @app.cell
@@ -949,9 +947,9 @@ def _(mo):
 
 
 @app.cell
-def _(mo, os):
-    # Dataset visualization controls
-    viz_available_datasets = ["Select dataset..."] + [f for f in os.listdir("data") if f.endswith('.pt')]
+def _(dataset_size_gb, generated_dataset, mo, os):
+    # Dataset visualization controls - updated to support memory datasets
+    viz_available_datasets = ["Use Generated Dataset (from memory)"] + ["Select dataset..."] + [f for f in os.listdir("data") if f.endswith('.pt')] if os.path.exists("data") else ["Use Generated Dataset (from memory)", "Select dataset..."]
     viz_dataset_dropdown = mo.ui.dropdown(
         options=viz_available_datasets,
         value=viz_available_datasets[0] if viz_available_datasets else "No datasets found",
@@ -965,8 +963,16 @@ def _(mo, os):
         on_click=lambda count: count + 1
     )
 
+    # Show dataset info if generated dataset is available
+    dataset_info_text = ""
+    if generated_dataset is not None:
+        dataset_info_text = f"**Generated Dataset Available:** {dataset_size_gb:.3f} GB in memory"
+    else:
+        dataset_info_text = "**No generated dataset in memory.** Generate one first or select a file dataset."
+
     mo.vstack([
         mo.md("**Explore your generated datasets by viewing random samples:**"),
+        mo.md(dataset_info_text),
         viz_dataset_dropdown,
         viz_sample_button
     ])
@@ -974,23 +980,32 @@ def _(mo, os):
 
 
 @app.cell
-def _(mo, plt, random, torch, viz_dataset_dropdown, viz_sample_button):
-    # Dataset sample visualization
+def _(dataset_size_gb, generated_dataset, mo, plt, random, torch, viz_dataset_dropdown, viz_sample_button):
+    # Dataset sample visualization - updated to support memory datasets
     viz_output = None
 
     if viz_sample_button.value > 0 and viz_dataset_dropdown.value != "Select dataset...":
         try:
-            # Load the selected dataset
-            viz_dataset_path = f"data/{viz_dataset_dropdown.value}"
-            viz_dataset = torch.load(viz_dataset_path)
+            # Determine if using generated dataset or file dataset
+            using_generated_viz = viz_dataset_dropdown.value == "Use Generated Dataset (from memory)"
+            
+            if using_generated_viz and generated_dataset is not None:
+                print(f"📊 Using generated dataset from memory (size: {dataset_size_gb:.3f} GB)")
+                viz_dataset = generated_dataset
+            elif not using_generated_viz:
+                # Load the selected dataset
+                viz_dataset_path = f"data/{viz_dataset_dropdown.value}"
+                viz_dataset = torch.load(viz_dataset_path)
+                print(f"📂 Loaded dataset: {viz_dataset_dropdown.value}")
+            else:
+                print("❌ **Error**: No generated dataset available. Please generate a dataset first.")
 
             # Get dataset metadata
             viz_metadata = viz_dataset.get('metadata', {})
             viz_dataset_type = viz_metadata.get('dataset_type', 'unknown')
             viz_is_single_frame = 'single_frame' in viz_dataset_type
 
-            print(f"📊 Loading dataset: {viz_dataset_dropdown.value}")
-            print(f"📋 Dataset type: {viz_dataset_type}")
+            print(f" Dataset type: {viz_dataset_type}")
 
             if viz_is_single_frame:
                 # Single frame dataset
@@ -1016,7 +1031,7 @@ def _(mo, plt, random, torch, viz_dataset_dropdown, viz_sample_button):
                 viz_axes[0].set_title(f'Sample RDM (Label: {viz_sample_label} targets)')
                 viz_axes[0].set_xlabel('Doppler Bin')
                 viz_axes[0].set_ylabel('Range Bin')
-                viz_cbar0 = plt.colorbar(viz_axes[0].images[0], ax=viz_axes[0], label='Normalized Power (dB)')
+                viz_cbar0 = plt.colorbar(viz_axes[0].images[0], ax=viz_axes[0], label='Power (dB)')
 
                 # Show mask
                 viz_axes[1].imshow(viz_sample_mask, aspect='auto', cmap='Reds', origin='lower', vmin=0, vmax=1)
@@ -1144,7 +1159,7 @@ def _(mo):
 @app.cell
 def _(mo):
     # Training parameters
-    train_epochs = mo.ui.slider(start=10, stop=100, value=30, step=5, label="Epochs")
+    train_epochs = mo.ui.slider(start=5, stop=100, value=30, step=5, label="Epochs")
     train_batch_size = mo.ui.slider(start=8, stop=64, value=16, step=8, label="Batch Size")
     train_learning_rate = mo.ui.slider(start=1e-5, stop=1e-2, value=1e-4, step=1e-5, label="Learning Rate")
     train_patience = mo.ui.slider(start=5, stop=20, value=10, step=1, label="Early Stopping Patience")
@@ -1167,9 +1182,62 @@ def _(mo):
 
 
 @app.cell
+def _(mo, models, train_base_filters, train_n_channels):
+    # Model architecture preview
+    def show_model_info():
+        """Show U-Net model architecture and trainable parameters"""
+        try:
+            # Create a temporary U-Net model to show architecture
+            temp_model = models.UNet(n_channels=train_n_channels.value, base_filters=train_base_filters.value)
+            
+            # Count trainable parameters
+            trainable_params = sum(p.numel() for p in temp_model.parameters() if p.requires_grad)
+            
+            # Get model parameter details
+            total_params = sum(p.numel() for p in temp_model.parameters())
+            
+            return {
+                'trainable_params': trainable_params,
+                'total_params': total_params,
+                'model_size_mb': (trainable_params * 4) / (1024**2),  # Assuming float32 (4 bytes per param)
+                'n_channels': train_n_channels.value,
+                'base_filters': train_base_filters.value
+            }
+        except Exception as e:
+            return {'error': str(e)}
+    
+    model_info = show_model_info()
+    
+    if 'error' not in model_info:
+        model_info_md = f"""
+        ## 🧠 **U-Net Model Configuration**
+        
+        **Architecture:**
+        - Input Channels: **{model_info['n_channels']}** {'(Single Frame)' if model_info['n_channels'] == 1 else '(Multi-Frame)'}
+        - Base Filters: **{model_info['base_filters']}**
+        
+        **Parameters:**
+        - Trainable Parameters: **{model_info['trainable_params']:,}**
+        - Total Parameters: **{model_info['total_params']:,}**
+        - Estimated Model Size: **{model_info['model_size_mb']:.1f} MB**
+        
+        *Note: Model will be created with these parameters when training starts.*
+        """
+    else:
+        model_info_md = f"""
+        ## 🧠 **U-Net Model Configuration**
+        
+        ⚠️ **Error getting model info:** {model_info['error']}
+        """
+    
+    mo.md(model_info_md)
+    return model_info
+
+
+@app.cell
 def _(mo, os):
-    # Dataset selection for training
-    train_available_datasets = ["Select dataset..."] + [f for f in os.listdir("data") if f.endswith('.pt')]
+    # Dataset selection for training - updated to support both file and memory datasets
+    train_available_datasets = ["Use Generated Dataset (from memory)"] + ["Select dataset..."] + [f for f in os.listdir("data") if f.endswith('.pt')]
     train_dataset_dropdown = mo.ui.dropdown(
         options=train_available_datasets,
         value=train_available_datasets[0] if train_available_datasets else "No datasets found",
@@ -1196,8 +1264,11 @@ def _(mo, os):
 @app.cell
 def _(
     cleanup_memory,
-    comprehensive_model_analysis,
+    comprehensive_evaluation,
+    dataset_size_gb,
+    generated_dataset,
     mo,
+    models,
     os,
     time,
     torch,
@@ -1220,7 +1291,20 @@ def _(
         print("🚀 Starting model training...")
         training_start_time = time.time()
 
-        training_dataset_path = f"data/{train_dataset_dropdown.value}"
+        # Determine if using generated dataset or file dataset
+        using_generated_dataset = train_dataset_dropdown.value == "Use Generated Dataset (from memory)"
+        
+        if using_generated_dataset and generated_dataset is not None:
+            print(f"📊 Using generated dataset from memory (size: {dataset_size_gb:.3f} GB)")
+            training_dataset = generated_dataset
+            training_dataset_path = None  # No file path for memory dataset
+        elif not using_generated_dataset:
+            training_dataset_path = f"data/{train_dataset_dropdown.value}"
+            print(f"📂 Loading dataset from: {training_dataset_path}")
+            training_dataset = None  # Will load from file
+        else:
+            print("❌ Error: No generated dataset available in memory. Please generate a dataset first.")
+
         training_model_save_path = f"pretrained/{train_model_name.value}.pt"
 
         # Ensure pretrained directory exists
@@ -1228,7 +1312,10 @@ def _(
 
         print(f"📊 Training Configuration:")
         print(f"  • Model: U-Net")
-        print(f"  • Dataset: {train_dataset_dropdown.value}")
+        if using_generated_dataset:
+            print(f"  • Dataset: Generated dataset (memory)")
+        else:
+            print(f"  • Dataset: {train_dataset_dropdown.value}")
         print(f"  • Input Channels: {train_n_channels.value}")
         print(f"  • Base Filters: {train_base_filters.value}")
         print(f"  • Epochs: {train_epochs.value}")
@@ -1236,27 +1323,102 @@ def _(
         print(f"  • Learning Rate: {train_learning_rate.value}")
         print(f"  • Loss Weights: BCE={train_bce_weight.value}, Dice={train_dice_weight.value}")
 
+        # Show model parameters before training
+        temp_model = models.UNet(n_channels=train_n_channels.value, base_filters=train_base_filters.value)
+        trainable_params = sum(p.numel() for p in temp_model.parameters() if p.requires_grad)
+        model_size_mb = (trainable_params * 4) / (1024**2)
+        print(f"🧠 Model Architecture:")
+        print(f"  • Trainable Parameters: {trainable_params:,}")
+        print(f"  • Estimated Model Size: {model_size_mb:.1f} MB")
+        del temp_model  # Clean up temporary model
+
         try:
             # Check if dataset is for segmentation or classification
-            training_dataset_check = torch.load(training_dataset_path)
+            if using_generated_dataset:
+                training_dataset_check = training_dataset
+            else:
+                training_dataset_check = torch.load(training_dataset_path)
+            
+            # Add dataset validation and debugging
+            print("🔍 Dataset Validation:")
+            if 'masks' in training_dataset_check:
+                # Segmentation dataset
+                data_key = 'images' if 'images' in training_dataset_check else 'sequences'
+                print(f"  • Dataset type: Segmentation")
+                print(f"  • Data shape: {training_dataset_check[data_key].shape}")
+                print(f"  • Masks shape: {training_dataset_check['masks'].shape}")
+                print(f"  • Labels shape: {training_dataset_check['labels'].shape}")
+                
+                # Validate dimensions match
+                n_samples_data = training_dataset_check[data_key].shape[0]
+                n_samples_masks = training_dataset_check['masks'].shape[0]
+                n_samples_labels = training_dataset_check['labels'].shape[0]
+                
+                print(f"  • Samples in data: {n_samples_data}")
+                print(f"  • Samples in masks: {n_samples_masks}")
+                print(f"  • Samples in labels: {n_samples_labels}")
+                
+                if n_samples_data != n_samples_masks or n_samples_data != n_samples_labels:
+                    print(f"❌ ERROR: Dimension mismatch detected!")
+                    print(f"  • Data samples: {n_samples_data}")
+                    print(f"  • Mask samples: {n_samples_masks}")
+                    print(f"  • Label samples: {n_samples_labels}")
+                    raise ValueError(f"Dataset has mismatched dimensions: data={n_samples_data}, masks={n_samples_masks}, labels={n_samples_labels}")
+                
+                print(f"  ✅ All dimensions match: {n_samples_data} samples")
+            
             training_is_segmentation = 'masks' in training_dataset_check
 
             if training_is_segmentation:
                 print("🎯 Detected segmentation dataset - proceeding with U-Net training")
 
-                # Train the model
-                train_model(
-                    dataset_path=training_dataset_path,
-                    n_channels=train_n_channels.value,
-                    num_epochs=train_epochs.value,
-                    patience=train_patience.value,
-                    batch_size=train_batch_size.value,
-                    lr=train_learning_rate.value,
-                    model_save_path=training_model_save_path,
-                    bce_weight=train_bce_weight.value,
-                    dice_weight=train_dice_weight.value,
-                    base_filters=train_base_filters.value
-                )
+                # Train the model - handle both memory and file datasets
+                if using_generated_dataset:
+                    # For memory datasets, we need to modify train_model to accept dataset directly
+                    # For now, save temporarily and clean up after
+                    temp_dataset_path = f"temp_dataset_for_training.pt"
+                    print(f"💾 Saving temporary dataset for training...")
+                    torch.save(training_dataset, temp_dataset_path)
+                    
+                    # Verify the saved dataset
+                    temp_check = torch.load(temp_dataset_path)
+                    data_key = 'images' if 'images' in temp_check else 'sequences'
+                    print(f"✅ Temporary dataset verified:")
+                    print(f"  • Data: {temp_check[data_key].shape}")
+                    print(f"  • Masks: {temp_check['masks'].shape}")
+                    print(f"  • Labels: {temp_check['labels'].shape}")
+                    del temp_check
+                    
+                    train_model(
+                        dataset_path=temp_dataset_path,
+                        n_channels=train_n_channels.value,
+                        num_epochs=train_epochs.value,
+                        patience=train_patience.value,
+                        batch_size=train_batch_size.value,
+                        lr=train_learning_rate.value,
+                        model_save_path=training_model_save_path,
+                        bce_weight=train_bce_weight.value,
+                        dice_weight=train_dice_weight.value,
+                        base_filters=train_base_filters.value
+                    )
+                    
+                    # Clean up temporary file
+                    if os.path.exists(temp_dataset_path):
+                        os.remove(temp_dataset_path)
+                        print(f"🧹 Removed temporary dataset file")
+                else:
+                    train_model(
+                        dataset_path=training_dataset_path,
+                        n_channels=train_n_channels.value,
+                        num_epochs=train_epochs.value,
+                        patience=train_patience.value,
+                        batch_size=train_batch_size.value,
+                        lr=train_learning_rate.value,
+                        model_save_path=training_model_save_path,
+                        bce_weight=train_bce_weight.value,
+                        dice_weight=train_dice_weight.value,
+                        base_filters=train_base_filters.value
+                    )
 
                 training_end_time = time.time()
                 training_time = training_end_time - training_start_time
@@ -1266,39 +1428,44 @@ def _(
 
                 # Run comprehensive analysis
                 print("📈 Running model analysis...")
-                training_analysis_start = time.time()
-
-                training_save_dir = 'single_frame' if train_n_channels.value == 1 else 'multi_frame'
-                training_analysis_results = comprehensive_model_analysis(
+                
+                # For analysis, use the appropriate dataset path
+                analysis_dataset_path = training_dataset_path if not using_generated_dataset else temp_dataset_path
+                if using_generated_dataset:
+                    # Recreate temp file for analysis
+                    torch.save(training_dataset, temp_dataset_path)
+                
+                results_plot = comprehensive_evaluation(
                     model_path=training_model_save_path,
-                    dataset_path=training_dataset_path,
-                    n_channels=train_n_channels.value,
-                    save_dir=training_save_dir,
-                    base_filters=train_base_filters.value
+                    dataset_path=analysis_dataset_path,
+                    base_filter_size=train_base_filters.value,
+                    marimo_var = True
                 )
-
-                training_analysis_time = time.time() - training_analysis_start
-                print(f"📊 Analysis completed in {training_analysis_time:.1f} seconds!")
-                print(f"📁 Analysis results saved to: analysis_{training_save_dir}/")
+                
+                if using_generated_dataset and os.path.exists(temp_dataset_path):
+                    os.remove(temp_dataset_path)
 
                 # Clean up memory after training and analysis
                 print("🧹 Cleaning up memory after training...")
                 
                 # Clear loaded dataset variables to free memory
-                del training_dataset_check, training_analysis_results
+                del training_dataset_check
                 
                 # Force garbage collection and GPU cache clearing
                 cleanup_memory(verbose=True)
 
                 # Display training summary
-                training_output = mo.md(f"""
+                training_output = mo.vstack([mo.md(f"""
                 ## 🎉 **Training Summary:**
                 - **Total Time**: {training_time/60:.1f} minutes\t
                 - **Model Type**: U-Net with {train_base_filters.value} base filters\t
                 - **Final Model**: `{training_model_save_path}`\t
-                - **Analysis**: `analysis_{training_save_dir}/`\t
                 - **Training completed successfully!** ✅
-                """)
+                """),
+                mo.md("## 📈 **Model Evaluation Results:**"),
+                    results_plot
+                ])
+            
 
             else:
                 training_output = mo.md("""
@@ -1312,16 +1479,11 @@ def _(
             try:
                 if 'training_dataset_check' in locals():
                     del training_dataset_check
+                if 'temp_dataset_path' in locals() and os.path.exists(temp_dataset_path):
+                    os.remove(temp_dataset_path)
             except:
                 pass
-            
-            training_output = mo.md(f"""
-            ❌ **Training failed with error**: 
-            ```
-            {str(e)}
-            ```
-            Please check your dataset and parameters.
-            """)
+
 
     elif train_start_button.value > 0:
         training_output = mo.md("⚠️ **Please select a dataset first!**")
