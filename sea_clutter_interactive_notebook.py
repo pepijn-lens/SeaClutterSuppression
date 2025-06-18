@@ -1506,12 +1506,7 @@ def _(mo):
     - **Mean Power**: Controls overall clutter intensity (-30 to 30 dB)\t
     - **Shape Parameter**: Controls clutter distribution (0.01-1.0, lower = more spiky)\t
     - **AR Coefficient**: Controls temporal correlation (0.7-0.99, higher = more correlated)\t
-    - **Wave Speed**: Affects Doppler spread (0-15 m/s)\t
     - **Bragg Components**: Simulate ocean wave reflections
-
-    **Dataset Types:**
-    - **Single Frame**: For single-frame segmentation tasks (localizing targets in 1 frame)\t
-    - **Multi Frame**: For multi-frame segmentation tasks (localizing targets across multiple frames)
 
     ### Recommended Settings:
     - **Learning Rate**: 1e-4 for most cases\t
@@ -1535,8 +1530,6 @@ def _(mo):
     4. **Explore your datasets**: Use Section 2.5 to visualize random samples from any generated dataset\t
     5. **Start with small datasets**: Use fewer samples (100-200) for quick testing and validation\t
     6. **Monitor training**: Watch the console output for training progress and metrics\t
-    7. **Evaluate thoroughly**: Use Section 4 to test your trained models comprehensively\t
-    8. **Experiment systematically**: Change one parameter at a time to understand its effect
 
     **Performance Notes:**\t
     - Training time scales with dataset size and model complexity\t

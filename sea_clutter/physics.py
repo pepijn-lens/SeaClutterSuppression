@@ -45,10 +45,6 @@ def _generate_speckle(
     return x
 
 
-def _time_to_range_doppler(data: np.ndarray) -> np.ndarray:
-    return np.fft.fftshift(np.fft.fft(data, axis=1), axes=1)
-
-
 def _inject_bragg(rd: np.ndarray, prf: float, offset_hz: float, width_hz: float, boost_db: float):
     """Multiply RD map by twin Gaussian Bragg peaks."""
     n_pulses = rd.shape[1]
@@ -61,12 +57,16 @@ def _inject_bragg(rd: np.ndarray, prf: float, offset_hz: float, width_hz: float,
 
 
 def _generate_thermal_noise(n_ranges: int, n_pulses: int, noise_power_db: float) -> np.ndarray:
-    """Generate complex Gaussian thermal noise."""
+    """Generate complex Gaussian thermal noise with specified absolute power in dB."""
     noise = (
         np.random.randn(n_ranges, n_pulses) + 1j * np.random.randn(n_ranges, n_pulses)
     ) / np.sqrt(2.0)
-    # Scale to desired power level
-    noise *= 10.0 ** (noise_power_db / 20.0)
+    
+    # Scale to achieve the desired power level in dB
+    # For complex Gaussian: E[|x|²] = σ² where σ is the std of real/imag parts
+    # To get power P_dB: σ = sqrt(10^(P_dB/10))
+    target_power_linear = 10.0 ** (noise_power_db / 10.0)
+    noise *= np.sqrt(target_power_linear)
     return noise
 
 def simulate_sea_clutter(
@@ -94,8 +94,11 @@ def add_target_blob(signal_td: np.ndarray, tgt: Target, rp: RadarParams):
     """Add a target at tgt.rng_idx with given power and Doppler, spreading over multiple range bins based on size."""
     n = np.arange(rp.n_pulses)
     phase = np.exp(1j * 2.0 * np.pi * tgt.doppler_hz * n / rp.prf)
-    # Fix: Use consistent dB to amplitude scaling
-    amp_center = 10.0 ** (tgt.power / 20.0)
+    
+    # Calculate amplitude to achieve desired power in dB
+    # For a sinusoid: Power = |A|²/2, but for complex exponential: Power = |A|²
+    target_power_linear = 10.0 ** (tgt.power / 10.0)
+    amp_center = np.sqrt(target_power_linear)
     
     # Get target size (default to 1 if not specified)
     target_size = getattr(tgt, 'size', 1)
@@ -118,12 +121,19 @@ def add_target_blob(signal_td: np.ndarray, tgt: Target, rp: RadarParams):
             
             signal_td[idx] += amp_center * power_factor * phase
 
-
 def compute_range_doppler(signal_td: np.ndarray, rp: RadarParams, cp: ClutterParams) -> np.ndarray:
     # Apply Hamming window along the slow-time (pulse) axis
     window = np.hamming(rp.n_pulses)
     signal_td_windowed = signal_td * window[np.newaxis, :]
-    rd = _time_to_range_doppler(signal_td_windowed)
+    
+    # FFT with normalization that preserves total power
+    rd = np.fft.fftshift(np.fft.fft(signal_td_windowed, axis=1), axes=1)
+    
+    # Compensate for windowing loss to preserve signal power
+    # Hamming window power loss factor
+    window_power_loss = np.mean(window**2)
+    rd /= np.sqrt(window_power_loss)
+    
     if cp.bragg_offset_hz is not None:
         _inject_bragg(rd, rp.prf, cp.bragg_offset_hz, cp.bragg_width_hz, cp.bragg_power_rel)
     return rd
