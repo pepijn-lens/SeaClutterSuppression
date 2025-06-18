@@ -88,9 +88,6 @@ def _(mo):
     1. **Parameter Adjustment & Real-time Visualization** - Adjust radar and clutter parameters and see sea clutter simulation \t
     2. **Dataset Generation** - Generate synthetic sea clutter datasets for training \t
     3. **U-Net Training** - Train deep learning models on the generated data\t
-    4. **Model Evaluation & Inference** - Test and analyze trained models
-
-    **💾 Memory Management**: This notebook includes automatic memory cleanup to free up RAM after intensive operations.
     """
     )
     return
