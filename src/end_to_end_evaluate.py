@@ -2,7 +2,7 @@ import numpy as np
 
 # Import the data loading function from your training file
 from sea_clutter import create_data_loaders
-from .end_to_end_helper import plot_performance_analysis, print_performance_report, evaluate_target_count_performance, show_dataset_stats, analyze_single_sample
+from .end_to_end_helper import plot_performance_analysis, evaluate_target_count_performance, show_dataset_stats, analyze_single_sample
 import models
 import torch
 

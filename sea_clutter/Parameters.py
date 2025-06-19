@@ -35,7 +35,7 @@ class Target:
 
 @dataclass
 class SequenceParams:
-    n_frames: int = 10             # Frames to simulate
+    n_frames: int = 1             # Frames to simulate
     frame_rate_hz: float = 2      # Frames per second
 
 class TargetType(Enum):

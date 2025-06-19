@@ -23,7 +23,7 @@ def train_cnn(model, train_loader, val_loader, criterion, optimizer, device, num
         correct = 0
         total = 0
 
-        for i, (inputs, labels) in enumerate(train_loader):
+        for i, (inputs, masks, labels) in enumerate(train_loader):
             inputs, labels = inputs.to(device), labels.to(device)
             optimizer.zero_grad()
             outputs = model(inputs)
@@ -49,7 +49,7 @@ def train_cnn(model, train_loader, val_loader, criterion, optimizer, device, num
         total = 0
 
         with torch.no_grad():
-            for inputs, labels in val_loader:
+            for inputs, masks, labels in val_loader:
                 inputs, labels = inputs.to(device), labels.to(device)
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
@@ -104,7 +104,7 @@ def evaluate_cnn(model, test_loader, device):
     correct, total = 0, 0
 
     with torch.no_grad():
-        for inputs, labels in test_loader:
+        for inputs, masks, labels in test_loader:
             inputs, labels = inputs.to(device), labels.to(device)
             outputs = model(inputs)
             _, predicted = outputs.max(1)
@@ -124,7 +124,7 @@ def analyze_cnn(model, dataloader, device, class_names=None, max_misclassified=1
     misclassified = []
 
     with torch.no_grad():
-        for inputs, labels in dataloader:
+        for inputs, masks, labels in dataloader:
             inputs, labels = inputs.to(device), labels.to(device)
             outputs = model(inputs)
             _, preds = torch.max(outputs, 1)

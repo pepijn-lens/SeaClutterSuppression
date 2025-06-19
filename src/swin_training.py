@@ -18,13 +18,15 @@ class RadarDataset(Dataset):
         if isinstance(loaded_data, dict):
             # Dictionary format with 'sequences'/'images', 'labels', 'metadata'
             if 'sequences' in loaded_data:
-                # New sequence dataset
+                # Unified format - all data is stored under 'sequences' key
                 self.data_tensor = loaded_data['sequences']
                 self.is_sequence = True
-            else:
-                # Old single image dataset
+            elif 'images' in loaded_data:
+                # Legacy format - single image dataset
                 self.data_tensor = loaded_data['images']  
                 self.is_sequence = False
+            else:
+                raise ValueError("Dataset must contain either 'sequences' or 'images' key")
                 
             self.label_tensor = loaded_data['labels']
             self.metadata = loaded_data.get('metadata', {})

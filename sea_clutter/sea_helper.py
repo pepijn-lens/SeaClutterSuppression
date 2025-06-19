@@ -119,7 +119,7 @@ def get_clutter_params_for_sea_state(state: int) -> ClutterParams:
             'wave_speed_mps': 2.0        # Moderate wave movement
         },
         5: {  # Moderate seas
-            'mean_power_db': 12.0,      # Moderate clutter power
+            'mean_power_db': -12.0,      # Moderate clutter power
             'shape_param': 0.3,          # Significant non-Gaussianity
             'ar_coeff': 0.9,           # Moderate correlation
             'bragg_offset_hz': None,     # Strong Bragg lines
@@ -196,7 +196,7 @@ def create_realistic_target(target_type: TargetType, initial_range_idx: int, rp:
         return RealisticTarget(
             rng_idx=initial_range_idx,
             doppler_hz=2.0 * base_velocity / rp.carrier_wavelength,
-            power=np.random.uniform(10, 11),
+            power=20,
             target_type=target_type,
             size=1,  # Default size for fixed targets
             base_velocity_mps=base_velocity,

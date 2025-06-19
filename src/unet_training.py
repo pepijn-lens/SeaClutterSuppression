@@ -55,7 +55,7 @@ def evaluate(model, loader, device) -> Tuple[float, float, float]:
     model.eval()
     dice_total, prec_total, recall_total = 0, 0, 0
     with torch.no_grad():
-        for images, masks in loader:
+        for images, masks, labels in loader:
             images, masks = images.to(device), masks.to(device)
             outputs = model(images)
             preds = torch.sigmoid(outputs) > 0.5
@@ -98,7 +98,7 @@ def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, b
         model.train()
         epoch_loss = 0
 
-        for i, (images, masks) in enumerate(train_loader):
+        for i, (images, masks, labels) in enumerate(train_loader):
             images, masks = images.to(device), masks.to(device)
 
             optimizer.zero_grad()
@@ -154,7 +154,7 @@ def comprehensive_model_analysis(model_path: str, dataset_path: str, n_channels=
     sample_idx = 0
     
     with torch.no_grad():
-        for batch_idx, (images, masks) in enumerate(eval_loader):
+        for batch_idx, (images, masks, labels) in enumerate(eval_loader):
             images, masks = images.to(device), masks.to(device)
             
             outputs = model(images)

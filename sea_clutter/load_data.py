@@ -49,19 +49,24 @@ class RadarSegmentationDataset(Dataset):
         
         # Check if this is sequence data or single frame data
         if 'sequences' in dataset:
-            # Sequence data
-            self.sequences = dataset['sequences']  # Shape: (N, n_frames, H, W)
-            self.mask_sequences = dataset['masks']  # Shape: (N, n_frames, H, W)
+            # Unified format - all data is stored under 'sequences' key
+            self.sequences = dataset['sequences']  # Shape: (N, n_frames, H, W) or (N, 1, H, W) for single frames
+            self.mask_sequences = dataset['masks']  # Shape: (N, n_frames, H, W) or (N, 1, H, W) for single frames
             self.is_sequence = True
-            self.n_frames = self.sequences.shape[1]
-            print(f"Loaded sequence dataset with {self.n_frames} frames per sequence")
-        else:
-            # Single frame data - convert to sequence format for compatibility
+            self.n_frames = self.sequences.shape[1] if len(self.sequences.shape) > 3 else 1
+            if self.n_frames > 1:
+                print(f"Loaded sequence dataset with {self.n_frames} frames per sequence")
+            else:
+                print("Loaded single frame dataset (stored as sequences with 1 frame)")
+        elif 'images' in dataset:
+            # Legacy format - convert to sequence format for compatibility
             self.sequences = dataset['images'].unsqueeze(1)  # Add frame dimension
             self.mask_sequences = dataset['masks'].unsqueeze(1)
             self.is_sequence = False
             self.n_frames = 1
-            print("Loaded single frame dataset, converted to sequence format")
+            print("Loaded legacy single frame dataset, converted to sequence format")
+        else:
+            raise ValueError("Dataset must contain either 'sequences' or 'images' key")
         
         self.labels = dataset['labels']  # Number of targets (for reference)
         self.metadata = dataset['metadata']
@@ -125,7 +130,7 @@ class RadarSegmentationDataset(Dataset):
         """Return the number of samples in the dataset."""
         return len(self.sequences)
     
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Get a sample from the dataset.
         
@@ -133,7 +138,7 @@ class RadarSegmentationDataset(Dataset):
             idx: Sample index
             
         Returns:
-            Tuple of (image, target_mask) tensors
+            Tuple of (image, target_mask, label) tensors
         """
         
         # Get sequence and mask sequence
@@ -166,7 +171,10 @@ class RadarSegmentationDataset(Dataset):
         
         # Keep mask as single channel without extra dimension
         # mask stays as (H, W) - U-Net expects this for binary segmentation
-        return image, mask
+        # Get the label (number of targets) for this sample
+        label = self.labels[idx]
+        
+        return image, mask, label
 
 def create_data_loaders(
     dataset_path: str,
@@ -271,7 +279,7 @@ def visualize_sample(
     """
     
     # Get a sample
-    image, mask_sequence = dataset[idx]  # mask_sequence: (n_frames, H, W)
+    image, mask_sequence, label = dataset[idx]  # mask_sequence: (n_frames, H, W)
     frame_count = mask_sequence.shape[0]
     fig, axes = plt.subplots(1, frame_count + 1, figsize=figsize)
     for i in range(frame_count):
@@ -290,6 +298,7 @@ def visualize_sample(
     print(f"Sample {idx}:")
     print(f"  Image shape: {image.shape}")
     print(f"  Mask sequence shape: {mask_sequence.shape}")
+    print(f"  Number of targets: {label.item()}")
 
 if __name__ == "__main__":
     visualize_sample(RadarSegmentationDataset('single_frame_test.pt', visualize=True), idx=122)

@@ -80,7 +80,15 @@ def simulate_sea_clutter(
     if texture is None:
         texture = _generate_texture(rp.n_ranges, rp.n_pulses, cp.shape_param)
     speckle = _generate_speckle(rp.n_ranges, rp.n_pulses, cp.ar_coeff, init_state=init_speckle)
-    clutter_td = texture * speckle * 10.0 ** (cp.mean_power_db / 20.0)
+    
+    # Calculate clutter power based on CNR relative to thermal noise
+    # cp.mean_power_db is now treated as clutter-to-noise ratio (CNR) in dB
+    thermal_noise_power_linear = 10.0 ** (thermal_noise_db / 10.0)
+    cnr_linear = 10.0 ** (cp.mean_power_db / 10.0)/rp.n_pulses  # CNR in linear scale, normalized by number of pulses
+    clutter_power_linear = cnr_linear * thermal_noise_power_linear
+    clutter_amp = np.sqrt(clutter_power_linear)
+    
+    clutter_td = texture * speckle * clutter_amp
     
     # Add thermal noise if specified
     if thermal_noise_db is not None:
@@ -90,14 +98,17 @@ def simulate_sea_clutter(
     return clutter_td, texture, speckle[:, -1]
 
 
-def add_target_blob(signal_td: np.ndarray, tgt: Target, rp: RadarParams):
-    """Add a target at tgt.rng_idx with given power and Doppler, spreading over multiple range bins based on size."""
+def add_target_blob(signal_td: np.ndarray, tgt: Target, rp: RadarParams, thermal_noise_db: float = 1):
+    """Add a target at tgt.rng_idx with given SNR and Doppler, spreading over multiple range bins based on size."""
     n = np.arange(rp.n_pulses)
     phase = np.exp(1j * 2.0 * np.pi * tgt.doppler_hz * n / rp.prf)
     
-    # Calculate amplitude to achieve desired power in dB
-    # For a sinusoid: Power = |A|²/2, but for complex exponential: Power = |A|²
-    target_power_linear = 10.0 ** (tgt.power / 10.0)
+    # Calculate target power based on SNR relative to thermal noise
+    # Reference power (Pspec) calculation: Pspec = 10**(SNR/10)
+    # Thermal noise power is set to 1 dB by default
+    thermal_noise_power_linear = 10.0 ** (thermal_noise_db / 10.0)
+    Pspec = 10.0 ** (tgt.power / 10.0)/rp.n_pulses  # tgt.power is now treated as SNR in dB
+    target_power_linear = Pspec * thermal_noise_power_linear
     amp_center = np.sqrt(target_power_linear)
     
     # Get target size (default to 1 if not specified)
