@@ -1146,7 +1146,7 @@ def _(mo):
 @app.cell
 def _(mo):
     # Model architecture controls - only UNet now
-    train_n_channels = mo.ui.slider(start=1, stop=10, value=1, step=1, label="Input Channels")
+    train_n_channels = mo.ui.slider(start=1, stop=10, value=1, step=1, label="Input Channels (the number of channels need to correspond to the number of frames used for generating the dataset")
     train_base_filters = mo.ui.slider(start=8, stop=64, value=16, step=8, label="Base Filters")
 
     mo.hstack([train_n_channels, train_base_filters])
