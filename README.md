@@ -17,12 +17,16 @@ This work demonstrates how AI, particularly deep learning, can be applied to rea
 
 ## Getting Started
 
-### Installation
+### With pip install 
 
 - Create a virtual environment and install the required packages:
 - python -m venv venv
 - source venv/bin/activate # or venv\Scripts\activate on Windows
 - pip install -r requirements.txt
+
+### With uv sync
+- Make sure to have poetry and uv installed on the device
+- Do uv sync
 
 ##  Usage
 
