@@ -3,6 +3,7 @@ import torch.nn as nn
 from typing import Tuple
 import matplotlib.pyplot as plt
 import numpy as np
+import marimo as mo 
 
 import os
 import seaborn as sns
@@ -94,7 +95,7 @@ def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, b
 
     print(f"Using combined loss: BCE weight={bce_weight}, Dice weight={dice_weight}")
 
-    for epoch in range(num_epochs):
+    for epoch in mo.status.progress_bar(range(num_epochs)):
         model.train()
         epoch_loss = 0
 
