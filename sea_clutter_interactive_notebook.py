@@ -13,8 +13,6 @@ def _():
     import random
     import os
     import time
-    import gc
-    import psutil
 
     # Import our custom modules
     import sea_clutter
@@ -23,17 +21,17 @@ def _():
     from src.simulation import simulate_sequence_with_realistic_targets
     from src.unet_training import train_model
     from src.end_to_end_evaluate import comprehensive_evaluation
+    from src.end_to_end_helper import analyze_single_sample
 
-    
+
     return (
+        analyze_single_sample,
         comprehensive_evaluation,
-        gc,
         mo,
         models,
         np,
         os,
         plt,
-        psutil,
         random,
         sea_clutter,
         simulate_sequence_with_realistic_targets,
@@ -54,26 +52,38 @@ def _(mo):
     1. **Parameter Adjustment & Real-time Visualization** - Adjust radar and clutter parameters and see sea clutter simulation \t
     2. **Dataset Generation** - Generate synthetic sea clutter datasets for training \t
     3. **U-Net Training** - Train deep learning models on the generated data\t
+    4. **Model Evaluation** - Evaluate trained models on any dataset with basic performance metrics\t
+    5. **Single Sample Analysis** - Analyze individual samples to understand model predictions and performance\t
     """
     )
+    return
 
 
 @app.cell
 def _(mo):
     mo.md("""## **Section 1: Real-time Sea Clutter Visualization**""")
+    return
 
 
 @app.cell
 def _(mo):
-    mo.md("""### Radar Parameters""")
+    mo.md(
+        """
+    ### Radar Parameters
+
+    Configure the fundamental radar system parameters that determine the measurement grid size and resolution.
+    """
+    )
+    return
 
 
 @app.cell
 def _(mo):
-    # Radar parameter controls
+    # Configure the basic radar operating parameters that define the measurement grid and timing
+    # PRF determines the maximum unambiguous velocity, while pulses and ranges set the resolution
     radar_prf = mo.ui.slider(start=1000, stop=10000, value=5000, step=100, label="PRF (Hz)")
-    radar_n_pulses = mo.ui.slider(start=64, stop=512, value=128, step=64, label="Number of Pulses")
-    radar_n_ranges = mo.ui.slider(start=64, stop=512, value=128, step=64, label="Number of Range Bins")
+    radar_n_pulses = mo.ui.slider(start=64, stop=2048, value=128, step=64, label="Number of Pulses")
+    radar_n_ranges = mo.ui.slider(start=64, stop=2048, value=128, step=64, label="Number of Range Bins")
 
     mo.hstack([radar_prf, radar_n_pulses, radar_n_ranges])
     return radar_n_pulses, radar_n_ranges, radar_prf
@@ -81,12 +91,20 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    mo.md("""### Clutter Parameters""")
+    mo.md(
+        """
+    ### Clutter Parameters
+
+    Control the statistical and spectral characteristics of sea clutter returns.
+    """
+    )
+    return
 
 
 @app.cell
 def _(mo):
-    # Clutter parameter controls
+    # Control sea clutter characteristics: intensity, temporal correlation, and ocean wave effects
+    # Lower shape parameter = more spiky clutter; higher AR coefficient = more temporal correlation
     clutter_mean_power = mo.ui.slider(start=0, stop=25, value=16, step=1, label="Mean Clutter Power (dB)")
     clutter_shape_param = mo.ui.slider(start=0.01, stop=1.0, value=0.75, step=0.01, label="Shape Parameter")
     clutter_ar_coeff = mo.ui.slider(start=0.5, stop=0.99, value=0.9, step=0.01, label="AR Coefficient")
@@ -100,6 +118,7 @@ def _(mo):
         mo.hstack([clutter_ar_coeff, clutter_bragg_offset]),
         mo.hstack([clutter_bragg_width, clutter_bragg_power, clutter_wave_speed])
     ])
+
     return (
         clutter_ar_coeff,
         clutter_bragg_offset,
@@ -113,12 +132,20 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    mo.md("""### Target Parameters""")
+    mo.md(
+        """
+    ### Target Parameters
+
+    Define the number and type of targets present in the simulation scenario.
+    """
+    )
+    return
 
 
 @app.cell
 def _(mo):
-    # Target parameter controls
+    # Define the number and type of targets to simulate in the scene
+    # Different target types have realistic RCS and velocity characteristics
     target_n_targets = mo.ui.slider(start=0, stop=15, value=6, label="Number of Targets")
     target_type_select = mo.ui.dropdown(
         options=["SPEEDBOAT", "CARGO_SHIP"],
@@ -132,12 +159,20 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    mo.md("""### Signal (SNR Control)""")
+    mo.md(
+        """
+    ### Signal (SNR Control)
+
+    Adjust target signal strength to control detection difficulty.
+    """
+    )
+    return
 
 
 @app.cell
 def _(mo):
-    # SNR control parameters
+    # Control target signal strength - higher values create easier detection scenarios
+    # This determines the Signal-to-Noise Ratio (SNR) for target visibility
     target_signal_power = mo.ui.slider(start=1, stop=30, value=20, step=1, label="Target Signal Power (dB)")
     noise_power = 0
     mo.hstack([target_signal_power])
@@ -146,12 +181,20 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    mo.md("""### Sequence Parameters (for Multi-Frame Generation)""")
+    mo.md(
+        """
+    ### Sequence Parameters (for Multi-Frame Generation)
+
+    Configure temporal aspects for generating sequences of radar frames.
+    """
+    )
+    return
 
 
 @app.cell
 def _(mo):
-    # Sequence parameter controls
+    # Configure temporal parameters for multi-frame sequences
+    # Higher frame rates capture faster target movements; longer sequences show more motion patterns
     seq_frame_rate = mo.ui.slider(start=0.5, stop=10.0, value=2.0, step=0.5, label="Frame Rate (Hz)")
     seq_total_time = mo.ui.slider(start=1.0, stop=20.0, value=5.0, step=0.5, label="Total Sequence Time (s)")
 
@@ -278,7 +321,7 @@ def _(mo, sequence_data):
         frame_slider = None
         slider_display = mo.md("*Generate a multi-frame sequence to use the interactive frame viewer.*")
 
-    return (frame_slider, slider_display)
+    return frame_slider, slider_display
 
 
 @app.cell
@@ -300,7 +343,7 @@ def _(frame_slider, mo, np, plt, sequence_data):
         # Display the frame selected by the slider
         current_frame = frame_slider.value
         current_frame_data = sequence_data['rdm_db_list'][current_frame]
-                
+
         frame_im = frame_ax.imshow(current_frame_data, aspect='auto', cmap='viridis',
                        extent=[frame_velocity[0], frame_velocity[-1], frame_range_axis[-1], frame_range_axis[0]],
                        vmin=frame_vmin, vmax=frame_vmax, interpolation='nearest')
@@ -343,16 +386,19 @@ def _(frame_slider, mo, np, plt, sequence_data):
 def _(frame_display, mo, slider_display):
     # Display the interactive frame viewer
     mo.vstack([slider_display, frame_display])
+    return
 
 
 @app.cell
 def _(mo):
     mo.md("""## **Section 2: Dataset Generation**""")
+    return
 
 
 @app.cell
 def _(mo):
-    # Dataset generation controls
+    # Configure dataset generation parameters using the simulation settings from Section 1
+    # More samples per class improve model generalization; more frames capture temporal patterns
     dataset_samples_per_class = mo.ui.slider(
         start=100, stop=2000, value=500, step=50,
         label="Samples per Class", show_value=True
@@ -384,7 +430,7 @@ def _(mo):
         dataset_samples_per_class=dataset_samples_per_class,
         dataset_max_targets=dataset_max_targets,
         dataset_n_frames=dataset_n_frames,
-        dataset_name=dataset_name
+        dataset_name=dataset_name,
     ).form(
         submit_button_label="🚀 Generate Dataset",
         bordered=False,
@@ -393,6 +439,7 @@ def _(mo):
     )
 
     dataset_config
+    return (dataset_config,)
 
 
 @app.cell
@@ -404,10 +451,10 @@ def _(
     clutter_mean_power,
     clutter_shape_param,
     clutter_wave_speed,
+    dataset_config,
+    mo,
     noise_power,
     np,
-    mo,
-    dataset_config,
     radar_n_pulses,
     radar_n_ranges,
     radar_prf,
@@ -544,7 +591,7 @@ def _(
     total_bytes = 0
     total_bytes += generated_dataset['sequences'].element_size() * generated_dataset['sequences'].nelement()
     total_bytes += generated_dataset['masks'].element_size() * generated_dataset['masks'].nelement()
-    
+
     total_bytes += generated_dataset['labels'].element_size() * generated_dataset['labels'].nelement()
     dataset_size_gb = total_bytes / (1024**3)  # Convert to GB
 
@@ -555,18 +602,95 @@ def _(
 
 
 @app.cell
-def _(mo):
-    mo.md("""## **Section 3: U-Net Training**""")
+def _(dataset_config, generated_dataset, mo):
+    mo.stop(
+        generated_dataset is None,
+        mo.md("No generated dataset found. Please generate a dataset in Section 2 before saving.").callout(kind="warn")
+    )
+
+    # Save the generated dataset to disk for future use in training or evaluation
+    # The dataset will be stored in the 'data' directory with .pt extension
+    save_dataset_name = mo.ui.text(
+        value=dataset_config.value["dataset_name"] if (dataset_config is not None and dataset_config.value is not None) else "my_sea_clutter_dataset",
+        label="Save Dataset As"
+    )
+
+    save_button = mo.md(
+        """
+        {save_dataset_name}
+        """
+    ).batch(
+        save_dataset_name=save_dataset_name
+    ).form(
+        submit_button_label="Save Dataset",
+        bordered=False,
+    )
+
+    save_button
+    return (save_button,)
+
+
+@app.cell
+def _(dataset_size_gb, generated_dataset, mo, os, save_button, torch):
+    mo.stop(
+        save_button.value is None,
+        mo.md("Click on 'Save Dataset' if you want to save for future usage.").callout(kind="warn")
+    )
+
+    # Create data directory if it doesn't exist
+    os.makedirs("data", exist_ok=True)
+
+    # Construct filename with .pt extension
+    filename = save_button.value["save_dataset_name"]
+    if not filename.endswith('.pt'):
+        filename += '.pt'
+
+    save_path = f"data/{filename}"
+
+    # Save the dataset
+    torch.save(generated_dataset, save_path)
+
+    save_result = mo.md(f"""
+    ✅ **Dataset Saved Successfully!**
+
+    - **File**: `{save_path}`
+    - **Size**: {dataset_size_gb:.2f} GB
+    - **Samples**: {len(generated_dataset['sequences']):,}
+    - **Classes**: {generated_dataset['metadata']['max_targets'] + 1}
+    - **Frames per Sample**: {generated_dataset['metadata']['n_frames']}
+
+    The dataset is now available for training in Section 3.
+    """)
+
+    save_result
+    return
 
 
 @app.cell
 def _(mo):
-    mo.md("""Configure U-Net model and training parameters:""")
+    mo.md("""## **Section 3: U-Net Training**""")
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(
+        """
+    Configure U-Net model and training parameters:
+
+    **Architecture**: Input channels must match the number of frames per sequence from your dataset.  
+    **Training**: Balance epochs, batch size, and learning rate for optimal convergence.  
+    **Loss Function**: BCE handles pixel-level accuracy, Dice handles class distribution imbalance.
+    """
+    )
+    return
 
 
 @app.cell
 def _(mo, os):
-    # UI Controls
+    # Configure U-Net architecture and training hyperparameters
+    # Input channels should match frames per sequence; more base filters = higher model capacity
+    # Learning rate and patience control training speed and overfitting prevention
     train_n_channels = mo.ui.slider(
         start=1, stop=10, value=3, step=1,
         label="Input Channels (match the number of frames used)", show_value=True
@@ -656,35 +780,29 @@ def _(mo, os):
     )
 
     train_config
+    return (train_config,)
+
 
 @app.cell
-def _(mo, train_config, models):
+def _(mo, models, train_config):
     mo.stop(train_config.value is None)
     # Preview model parameter counts
     base_filters = train_config.value["train_base_filters"]
     n_channels = train_config.value["train_n_channels"]
     temp_model = models.UNet(n_channels=n_channels, base_filters=base_filters)
     trainable_params = sum(p.numel() for p in temp_model.parameters() if p.requires_grad)
-    total_params = sum(p.numel() for p in temp_model.parameters())
     param_info = mo.md(f"""
     ### **Model Stats**
     - Trainable Parameters: **{trainable_params:,}**  
-    - Total Parameters: **{total_params:,}**  
-    - Estimated Model Size: **{(trainable_params * 4) / (1024**2):.1f} MB**
+    - **Base Filters**: {base_filters}
+    - **Input Channels**: {n_channels}
     """)
     param_info
+    return
+
 
 @app.cell
-def _(
-    comprehensive_evaluation,
-    generated_dataset,
-    mo,
-    os,
-    time,
-    torch,
-    train_config,
-    train_model, 
-):
+def _(generated_dataset, mo, os, time, torch, train_config, train_model):
 
     mo.stop(
         train_config.value is None,
@@ -711,7 +829,7 @@ def _(
 
         # Save generated dataset temporarily if needed
         if using_generated_dataset:
-            temp_dataset_path = "temp_dataset_for_training.pt"
+            temp_dataset_path = f"{training_dataset_path}_temp.pt"
             torch.save(training_dataset, temp_dataset_path)
             dataset_path_for_training = temp_dataset_path
         else:
@@ -731,17 +849,6 @@ def _(
             base_filters=train_config.value["train_base_filters"]
         )
 
-        # Run evaluation
-        results_plot = comprehensive_evaluation(
-            model_path=training_model_save_path,
-            dataset_path=dataset_path_for_training,
-            base_filter_size=train_config.value["train_base_filters"],
-            marimo_var=True
-        )
-
-        if results_plot is None:
-            results_plot = mo.md("No evaluation results available. Please check the training logs for details.")
-
         # Cleanup
         if using_generated_dataset and os.path.exists(temp_dataset_path):
             os.remove(temp_dataset_path)
@@ -759,22 +866,218 @@ def _(
             - **Model Type:** U-Net with {train_config.value["train_base_filters"]} base filters  
             - **Model Saved As:** `{training_model_save_path}`  
             - **Training completed successfully!**
-            """),
-            mo.md("## **Model Evaluation Results:**"),
-            mo.as_html(results_plot) if results_plot is not None else mo.md("*No evaluation results available.*")
+
+            💡 **Next Step:** Use Section 4 below to evaluate your trained model!
+            """)
         ])
 
     except Exception as e:
-        training_output = mo.md(f"❌ **Training failed:** `{str(e)}`").callout(kind="error")
+        training_output = mo.md(f"❌ **Training failed:** `{str(e)}`").callout(kind="danger")
         try:
-            if using_generated_dataset and os.path.exists("temp_dataset_for_training.pt"):
-                os.remove("temp_dataset_for_training.pt")
+            if using_generated_dataset and os.path.exists(temp_dataset_path):
+                os.remove(temp_dataset_path)
         except:
             pass
 
-    return training_output
+    training_output
+    return
 
 
+@app.cell
+def _(mo):
+    mo.md("""## **Section 4: Model Evaluation**""")
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(
+        """
+    Configure evaluation parameters and select model and dataset:
+
+    **Model Selection**: Choose a trained model from the pretrained folder.  
+    **Dataset**: Use either the generated dataset from memory or load a saved dataset.  
+    **Distance Threshold**: Controls how precisely predicted targets must match ground truth locations.
+    """
+    )
+    return
+
+
+@app.cell
+def _(mo, os):
+    # Select trained model and dataset for performance evaluation
+    # Distance threshold determines how close predictions must be to ground truth targets
+    # Base filters must match the training configuration of the selected model
+
+    # Model selection
+    eval_available_models = ["Select model..."] + [
+        f for f in os.listdir("pretrained") if f.endswith('.pt')
+    ] if os.path.exists("pretrained") else ["Select model..."]
+
+    eval_model_dropdown = mo.ui.dropdown(
+        options=eval_available_models,
+        value=eval_available_models[0],
+        label="Model to Evaluate"
+    )
+
+    # Dataset selection
+    eval_available_datasets = (
+        ["Use Generated Dataset (from memory)"] + 
+        ["Select dataset..."] + 
+        [f for f in os.listdir("data") if f.endswith('.pt')] if os.path.exists("data") else ["Select dataset..."]
+    )
+
+    eval_dataset_dropdown = mo.ui.dropdown(
+        options=eval_available_datasets,
+        value="Select dataset...",
+        label="Evaluation Dataset"
+    )
+
+    # Evaluation parameters
+    eval_distance_threshold = mo.ui.slider(
+        start=1.0, stop=15.0, value=5.0, step=0.5,
+        label="Distance Threshold (pixels)", show_value=True
+    )
+
+    eval_base_filters = mo.ui.slider(
+        start=8, stop=64, value=16, step=8,
+        label="Base Filters (match training)", show_value=True
+    )
+
+    # Compose the evaluation form
+    eval_config = mo.md(
+        """
+        ### **Model & Dataset Selection**
+        {eval_model_dropdown}  
+        {eval_dataset_dropdown}  
+
+        ### **Evaluation Parameters**
+        {eval_distance_threshold}  
+        {eval_base_filters}
+        """
+    ).batch(
+        eval_model_dropdown=eval_model_dropdown,
+        eval_dataset_dropdown=eval_dataset_dropdown,
+        eval_distance_threshold=eval_distance_threshold,
+        eval_base_filters=eval_base_filters
+    ).form(
+        submit_button_label="Run Evaluation",
+        bordered=False,
+        show_clear_button=True,
+        clear_button_label="Reset"
+    )
+
+    eval_config
+    return (eval_config,)
+
+
+@app.cell
+def _(comprehensive_evaluation, eval_config, generated_dataset, mo, os, torch):
+    mo.stop(
+        eval_config.value is None,
+        mo.md("Please configure evaluation settings and click '🔍 Run Evaluation'").callout(kind="warn")
+    )
+
+    # Validate selections
+    if eval_config.value["eval_model_dropdown"] in ["Select model...", None]:
+        mo.stop(True, mo.md("❌ Please select a model to evaluate").callout(kind="danger"))
+
+    if eval_config.value["eval_dataset_dropdown"] in ["Select dataset...", None]:
+        mo.stop(True, mo.md("❌ Please select a dataset for evaluation").callout(kind="danger"))
+
+    evaluation_output = None
+
+    try:
+        # Determine model and dataset paths
+        using_generated_dataset_eval = eval_config.value["eval_dataset_dropdown"] == "Use Generated Dataset (from memory)"
+        evaluation_model_path = f"pretrained/{eval_config.value['eval_model_dropdown']}"
+
+        # Load dataset
+        if using_generated_dataset_eval:
+            if generated_dataset is None:
+                mo.stop(True, mo.md("❌ **Error:** No generated dataset found. Please generate one first.").callout(kind="danger"))
+            evaluation_dataset = generated_dataset
+            evaluation_dataset_path = None
+        else:
+            evaluation_dataset_path = f"data/{eval_config.value['eval_dataset_dropdown']}"
+            if not os.path.exists(evaluation_dataset_path):
+                mo.stop(True, mo.md(f"❌ **Error:** Dataset file not found: `{evaluation_dataset_path}`").callout(kind="danger"))
+            evaluation_dataset = torch.load(evaluation_dataset_path)
+
+        # Save generated dataset temporarily if needed
+        if using_generated_dataset_eval:
+            temp_eval_dataset_path = f"{evaluation_dataset_path}_temp.pt"
+            torch.save(evaluation_dataset, temp_eval_dataset_path)
+            dataset_path_for_evaluation = temp_eval_dataset_path
+        else:
+            dataset_path_for_evaluation = evaluation_dataset_path
+
+        # Verify model file exists
+        if not os.path.exists(evaluation_model_path):
+            mo.stop(True, mo.md(f"❌ **Error:** Model file not found: `{evaluation_model_path}`").callout(kind="danger"))
+
+        print(f"🔍 Starting evaluation...")
+        print(f"Model: {evaluation_model_path}")
+        print(f"Dataset: {'Generated Dataset (in memory)' if using_generated_dataset_eval else evaluation_dataset_path}")
+        print(f"Distance threshold: {eval_config.value['eval_distance_threshold']} pixels")
+
+        # Run evaluation
+        evaluation_results = comprehensive_evaluation(
+            model_path=evaluation_model_path,
+            dataset_path=dataset_path_for_evaluation,
+            base_filter_size=eval_config.value["eval_base_filters"],
+            marimo_var=True,
+            distance_threshold=eval_config.value["eval_distance_threshold"]
+        )
+
+        # Extract results
+        if evaluation_results and 'spatial_plots' in evaluation_results:
+            results_plot = evaluation_results['spatial_plots']
+        else:
+            results_plot = mo.md("No evaluation results available. Please check the evaluation logs for details.")
+
+        # Cleanup
+        if using_generated_dataset_eval and os.path.exists(temp_eval_dataset_path):
+            os.remove(temp_eval_dataset_path)
+            print("🧹 Removed temporary evaluation dataset file")
+
+        del evaluation_dataset
+
+        eval_summary = ""
+
+        # Add spatial evaluation metrics if available
+        if evaluation_results and 'spatial_results' in evaluation_results:
+            spatial_metrics = evaluation_results['spatial_results']
+            eval_summary += f"""
+
+        ## **Spatial Performance Metrics**
+        - **Precision:** {spatial_metrics['precision']:.3f} *(True Positives / (True Positives + False Positives))*
+        - **Recall:** {spatial_metrics['recall']:.3f} *(True Positives / (True Positives + False Negatives))*  
+        - **F1-Score:** {spatial_metrics['f1_score']:.3f} *(Harmonic mean of Precision and Recall)*
+        - **True Positives:** {spatial_metrics['total_true_positives']} *(Correctly detected targets)*
+        - **False Positives:** {spatial_metrics['total_false_positives']} *(Incorrectly detected targets)*
+        - **False Negatives:** {spatial_metrics['total_false_negatives']} *(Missed targets)*
+        - **Samples Evaluated:** {spatial_metrics['num_samples']}
+        - **Mean Match Distance:** {spatial_metrics.get('mean_match_distance', 'N/A'):.2f} pixels
+        """
+
+        # Return final result
+        evaluation_output = mo.vstack([
+            mo.md(eval_summary),
+            mo.md("## **Detailed Spatial Performance Analysis:**"),
+            mo.as_html(results_plot) if results_plot is not None else mo.md("*No evaluation visualization available.*")
+        ])
+
+    except Exception as e:
+        evaluation_output = mo.md(f"❌ **Evaluation failed:** `{str(e)}`").callout(kind="danger")
+        try:
+            if using_generated_dataset_eval and os.path.exists("temp_dataset_for_evaluation.pt"):
+                os.remove("temp_dataset_for_evaluation.pt")
+        except:
+            pass
+
+    evaluation_output
+    return
 
 @app.cell
 def _(mo):
@@ -785,9 +1088,9 @@ def _(mo):
     ### Parameter Guidelines:
 
     **Sea Clutter Parameters:**\t
-    - **Mean Power**: Controls overall clutter intensity (-30 to 30 dB)\t
-    - **Shape Parameter**: Controls clutter distribution (0.01-1.0, lower = more spiky)\t
-    - **AR Coefficient**: Controls temporal correlation (0.7-0.99, higher = more correlated)\t
+    - **Mean Power**: Controls overall clutter intensity\t
+    - **Shape Parameter**: Controls clutter distribution, lower = more spiky\t
+    - **AR Coefficient**: Controls temporal correlation, higher = more correlated\t
     - **Bragg Components**: Simulate ocean wave reflections
 
     ### Recommended Settings:
@@ -797,7 +1100,7 @@ def _(mo):
     - **Patience**: 10-15 epochs for early stopping
     """
     )
-
+    return
 
 
 @app.cell
@@ -827,25 +1130,27 @@ def _(mo):
     - **Overfitting**: Add more diverse training data or reduce model complexity
     """
     )
+    return
+
 
 @app.cell
 def _(mo):
     mo.md(
         """
-    ## **Credits, Contributions & Resources**
+    ##**Credits, Contributions & Resources**
 
-    ### **Project Information**
+    ###**Project Information**
     This interactive sea clutter suppression notebook and the underlying deep learning framework were developed by **Pepijn Lens** as part of a bachelor thesis and internship at TNO.
 
     ### **Repository & Collaboration**
-    - ** GitHub Repository**: [github.com/pepijn-lens/SeaClutterSuppression](https://github.com/pepijn-lens/SeaClutterSuppression)
-    - ** Report Issues**: Use GitHub Issues for bug reports and feature requests
-    - ** Contribute**: Pull requests welcome!
-    - ** Documentation**: Comprehensive README and code documentation available in the repository
+    - **GitHub Repository**: [github.com/pepijn-lens/SeaClutterSuppression](https://github.com/pepijn-lens/SeaClutterSuppression)
+    - **Report Issues**: Use GitHub Issues for bug reports and feature requests
+    - **Contribute**: Pull requests welcome!
+    - **Documentation**: Comprehensive README and code documentation available in the repository
 
     ### **Contact & Support**
-    - ** Email**: pepijn.lens@tno.nl
-    - ** Discussions**: Use GitHub Discussions for questions
+    - **Email**: pepijn.lens@tno.nl
+    - **Discussions**: Use GitHub Discussions for questions
 
     ### **Citation**
     If you use this work in your research, please cite the repository.
@@ -854,6 +1159,7 @@ def _(mo):
     *Last updated: 20th of June 2025 • Version compatible with Marimo 0.13.15+*
     """
     )
+    return
 
 
 if __name__ == "__main__":

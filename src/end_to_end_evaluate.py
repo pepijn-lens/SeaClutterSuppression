@@ -2,12 +2,17 @@ import numpy as np
 
 # Import the data loading function from your training file
 from sea_clutter import create_data_loaders
-from .end_to_end_helper import plot_performance_analysis, evaluate_target_count_performance, show_dataset_stats, analyze_single_sample
+from .end_to_end_helper import (
+    analyze_single_sample, 
+    evaluate_spatial_performance,
+    print_spatial_performance_report,
+    plot_spatial_performance_analysis,
+)
 import models
 import torch
 
-def comprehensive_evaluation(dataset_path, model_path, base_filter_size, save=None, clustering_params=None, marimo_var = False):
-    """Run a comprehensive evaluation of the end-to-end model using test data"""
+def comprehensive_evaluation(dataset_path, model_path, base_filter_size, save=None, clustering_params=None, marimo_var=False, distance_threshold=5.0):
+    """Run a comprehensive evaluation of the end-to-end model using both count-based and spatial evaluation"""
     
     # Create data loaders same as in training
     _, val_loader, test_loader = create_data_loaders(
@@ -38,24 +43,51 @@ def comprehensive_evaluation(dataset_path, model_path, base_filter_size, save=No
     model = models.EndToEndTargetDetector(
         unet_weights_path=model_path,
         n_channels=n_channels,
-        base_filter_size=base_filter_size,  # Default base filter size
+        base_filter_size=base_filter_size,
         clustering_params=clustering_params or {'min_area': 1, 'eps': 1, 'min_samples': 1}
-    ).to('mps' if torch.backends.mps.is_available() else 'cpu')  # Move model to MPS
+    ).to('mps' if torch.backends.mps.is_available() else 'cpu')
     
-    # Evaluate performance on test data
-    print("Running comprehensive evaluation on test data...")
-    results = evaluate_target_count_performance(model, eval_loader, eval_dataset_name)
+    print("\n" + "="*80)
+    print("COMPREHENSIVE EVALUATION REPORT")
+    print("="*80)
     
-    # # Print report
-    # print_performance_report(results)
+    # 1. NEW: Spatial evaluation (recommended)
+    print(f"\n1. RUNNING SPATIAL EVALUATION (distance threshold: {distance_threshold} pixels)...")
+    spatial_results = evaluate_spatial_performance(model, eval_loader, distance_threshold, eval_dataset_name)
+    print_spatial_performance_report(spatial_results)
     
-    results = plot_performance_analysis(results, save_path=None, marimo= marimo_var)
+    # Create spatial performance plots
+    if save:
+        spatial_save_path = f"{save}/spatial_performance"
+    else:
+        spatial_save_path = None
     
-    return results
+    spatial_plots = plot_spatial_performance_analysis(spatial_results, save_path=spatial_save_path, marimo=marimo_var)
+    
+        
+    # 3. Summary comparison
+    print(f"\n" + "="*80)
+    print("EVALUATION SUMMARY")
+    print("="*80)
+    print(f"Dataset: {eval_dataset_name} ({len(eval_loader.dataset)} samples)")
+    print(f"Distance threshold: {distance_threshold} pixels")
+    print(f"\nSPATIAL EVALUATION RESULTS:")
+    print(f"  Precision: {spatial_results['precision']:.3f}")
+    print(f"  Recall:    {spatial_results['recall']:.3f}")
+    print(f"  F1-Score:  {spatial_results['f1_score']:.3f}")
+    print(f"  True Positives:  {spatial_results['total_true_positives']}")
+    print(f"  False Positives: {spatial_results['total_false_positives']}")
+    print(f"  False Negatives: {spatial_results['total_false_negatives']}")
+    
+    # Return both results for further analysis
+    return {
+        'spatial_results': spatial_results,
+        'spatial_plots': spatial_plots,
+    }
 
-def interactive_sample_explorer(dataset_path, model_path, base_filter_size, clustering_params=None):
+def interactive_sample_explorer(dataset_path, model_path, base_filter_size, clustering_params=None, distance_threshold=5.0):
     """
-    Interactive method to explore samples from the dataset using the end-to-end target detector
+    Interactive method to explore samples from the dataset using the end-to-end target detector with spatial evaluation
     """
     print("Loading dataset and model...")
     
@@ -79,18 +111,19 @@ def interactive_sample_explorer(dataset_path, model_path, base_filter_size, clus
     model = models.EndToEndTargetDetector(
         unet_weights_path=model_path,
         n_channels=n_channels,
-        base_filter_size=base_filter_size,  # Default base filter size
+        base_filter_size=base_filter_size,
         clustering_params=clustering_params or {'min_area': 3, 'eps': 1, 'min_samples': 1}
     )
     
     print(f"Model loaded with {n_channels} input channels")
+    print(f"Using spatial evaluation with distance threshold: {distance_threshold} pixels")
     print("\n" + "="*60)
     print("INTERACTIVE SAMPLE EXPLORER")
     print("="*60)
     print("Commands:")
     print("  Enter a number (0-{}) to analyze a specific sample".format(len(dataset)-1))
     print("  'random' or 'r' for a random sample")
-    print("  'stats' or 's' to show dataset statistics")
+    print("  'threshold X' to change distance threshold (e.g., 'threshold 10')")
     print("  'quit' or 'q' to exit")
     print("="*60)
     
@@ -106,9 +139,15 @@ def interactive_sample_explorer(dataset_path, model_path, base_filter_size, clus
                 sample_idx = np.random.randint(0, len(dataset))
                 print(f"Randomly selected sample {sample_idx}")
             
-            elif user_input in ['stats', 's']:
-                show_dataset_stats(dataset)
-                continue
+            elif user_input.startswith('threshold'):
+                try:
+                    new_threshold = float(user_input.split()[1])
+                    distance_threshold = new_threshold
+                    print(f"Distance threshold updated to {distance_threshold} pixels")
+                    continue
+                except (IndexError, ValueError):
+                    print("Invalid threshold format. Use 'threshold X' where X is a number (e.g., 'threshold 10')")
+                    continue
                 
             else:
                 try:
@@ -117,11 +156,11 @@ def interactive_sample_explorer(dataset_path, model_path, base_filter_size, clus
                         print(f"Invalid index. Please enter a number between 0 and {len(dataset)-1}")
                         continue
                 except ValueError:
-                    print("Invalid input. Please enter a number, 'random', 'stats', or 'quit'")
+                    print("Invalid input. Please enter a number, 'random', 'threshold X', or 'quit'")
                     continue
             
-            # Process the selected sample
-            analyze_single_sample(model, dataset, sample_idx)
+            # Process the selected sample with spatial evaluation
+            analyze_single_sample(model, dataset, sample_idx, distance_threshold)
             
         except KeyboardInterrupt:
             print("\nGoodbye!")
@@ -142,8 +181,9 @@ if __name__ == "__main__":
     parser.add_argument("--cluster-min-area", type=int, default=3, help="Minimum area for a cluster to be valid")
     parser.add_argument("--cluster-eps", type=float, default=1.0, help="DBSCAN eps parameter")
     parser.add_argument("--cluster-min-samples", type=int, default=1, help="DBSCAN min_samples parameter")
+    parser.add_argument("--distance-threshold", type=float, default=5.0, 
+                        help="Distance threshold for spatial evaluation (pixels)")
     parser.add_argument("--interactive", action="store_true", help="Launch interactive sample explorer after evaluation")
-
 
     args = parser.parse_args()
 
@@ -153,18 +193,22 @@ if __name__ == "__main__":
         'min_samples': args.cluster_min_samples,
     }
 
-    comprehensive_evaluation(
+    # Run comprehensive evaluation with both spatial and count-based methods
+    results = comprehensive_evaluation(
         args.dataset,
         args.model,
         save=args.save_path,
         base_filter_size=args.base_filter_size,
         clustering_params=clustering,
+        distance_threshold=args.distance_threshold,
     )
-
+    
     if args.interactive:
+        print(f"\nLaunching interactive explorer...")
         interactive_sample_explorer(
             args.dataset,
             args.model,
             args.base_filter_size,
             clustering_params=clustering,
+            distance_threshold=args.distance_threshold,
         )

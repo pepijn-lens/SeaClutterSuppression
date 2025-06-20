@@ -7,12 +7,12 @@ from sklearn.cluster import DBSCAN
 
 class ClusteringModule:
     """Clustering module to extract centroids from binary maps"""
-    def __init__(self, min_area=3, eps=3, min_samples=1):
+    def __init__(self, min_area=3, eps=1, min_samples=1):
         self.min_area = min_area
         self.eps = eps
         self.min_samples = min_samples
     
-    def extract_centroids(self, binary_map, threshold=0.01):
+    def extract_centroids(self, binary_map, threshold=0.5):
         """
         Extract centroids from binary map using connected components and DBSCAN
         
@@ -106,8 +106,6 @@ class EndToEndTargetDetector(nn.Module):
         
         # Only convert to CPU/NumPy for clustering operations
         batch_centroids = []
-
-        #TODO: number of targets is stored in data set with key 'labels
         
         for i in range(binary_maps.shape[0]):
             # Move single sample to CPU for clustering
