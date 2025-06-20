@@ -66,3 +66,7 @@ I would like to thank my supervisors:
 
 - Integration of hybrid Swin Transformer U-Net architecture
 - Training on real-world radar datasets
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
