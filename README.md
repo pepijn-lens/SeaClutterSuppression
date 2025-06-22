@@ -30,23 +30,6 @@ This work demonstrates how AI, particularly deep learning, can be applied to rea
 
 ##  Usage
 
-### Script Usage
-Run the following commands to find explanations on how to use this software
-
-Generate data directly:
-```bash
-python -m src.generate_data --help
-```
-
-Train a U-Net from the dataset:
-```bash
-python -m src.unet_training --help
-```
-
-Evaluate the trained detector:
-```bash
-python -m src.end_to_end_evaluate --help
-```
 ### Marimo Notebook usage
 This repository includes a Marimo notebook which allows its users to design their own sea cluttered Range Doppler maps, generate a dataset and finally train a Unet on it. Use the following command to run: 
 ```bash
@@ -63,8 +46,6 @@ I would like to thank my supervisors:
 - Daan Pelt
 
 ## Future Work
-
-- Integration of hybrid Swin Transformer U-Net architecture
 - Training on real-world radar datasets
 
 ## License
