@@ -105,7 +105,7 @@ def _(mo):
 def _(mo):
     # Control sea clutter characteristics: intensity, temporal correlation, and ocean wave effects
     # Lower shape parameter = more spiky clutter; higher AR coefficient = more temporal correlation
-    clutter_mean_power = mo.ui.slider(start=0, stop=25, value=16, step=1, label="Mean Clutter Power (dB)")
+    clutter_mean_power = mo.ui.slider(start=-20, stop=25, value=16, step=1, label="Mean Clutter Power (dB)")
     clutter_shape_param = mo.ui.slider(start=0.01, stop=1.0, value=0.75, step=0.01, label="Shape Parameter")
     clutter_ar_coeff = mo.ui.slider(start=0.5, stop=0.99, value=0.9, step=0.01, label="AR Coefficient")
     clutter_bragg_offset = mo.ui.slider(start=0, stop=100, value=45, step=1, label="Bragg Offset (Hz)")
@@ -797,6 +797,7 @@ def _(mo, models, train_config):
     - **Base Filters**: {base_filters}
     - **Input Channels**: {n_channels}
     """)
+    del temp_model
     param_info
     return
 
@@ -829,7 +830,7 @@ def _(generated_dataset, mo, os, time, torch, train_config, train_model):
 
         # Save generated dataset temporarily if needed
         if using_generated_dataset:
-            temp_dataset_path = f"{training_dataset_path}_temp.pt"
+            temp_dataset_path = f"{train_config.value["train_dataset_dropdown"]}_temp.pt"
             torch.save(training_dataset, temp_dataset_path)
             dataset_path_for_training = temp_dataset_path
         else:

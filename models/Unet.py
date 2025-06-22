@@ -42,15 +42,3 @@ class UNet(nn.Module):
         x = self.dec1(torch.cat([x, x1], dim=1))
         return self.out_conv(x)
     
-if __name__ == "__main__":
-    # Example usage
-    model = UNet(n_channels=3, n_classes=1)
-    x = torch.randn(1, 3, 128, 128)  # Batch size of 1, 3 channels, 128x128 image
-    output = model(x)
-    print(output.shape)  # Should be (1, 1, 128,128) for binary segmentation
-
-    # print number of parameters
-    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Number of trainable parameters: {num_params}")
-
-    print(model)
