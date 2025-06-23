@@ -1,5 +1,8 @@
 env/
 .venv/
+inside12SNRUnet/*
+inside16SNRUnet/*
+inside20SNRUnet/*
 
 local*
 
