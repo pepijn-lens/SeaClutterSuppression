@@ -112,7 +112,7 @@ def interactive_sample_explorer(dataset_path, model_path, base_filter_size, clus
         unet_weights_path=model_path,
         n_channels=n_channels,
         base_filter_size=base_filter_size,
-        clustering_params=clustering_params or {'min_area': 3, 'eps': 1, 'min_samples': 1}
+        clustering_params=clustering_params or {'min_area': 1, 'eps': 1, 'min_samples': 1}
     )
     
     print(f"Model loaded with {n_channels} input channels")

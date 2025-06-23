@@ -7,12 +7,12 @@ from sklearn.cluster import DBSCAN
 
 class ClusteringModule:
     """Clustering module to extract centroids from binary maps"""
-    def __init__(self, min_area=3, eps=1, min_samples=1):
+    def __init__(self, min_area=1, eps=1, min_samples=1):
         self.min_area = min_area
         self.eps = eps
         self.min_samples = min_samples
     
-    def extract_centroids(self, binary_map, threshold=0.5):
+    def extract_centroids(self, binary_map, threshold=0.1):
         """
         Extract centroids from binary map using connected components and DBSCAN
         
