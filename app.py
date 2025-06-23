@@ -18,7 +18,6 @@ def _():
     import sea_clutter
     import models
     from src.generate_data import simulate_sequence_with_realistic_targets_and_masks
-    from src.simulation import simulate_sequence_with_realistic_targets
     from src.unet_training import train_model
     from src.end_to_end_evaluate import comprehensive_evaluation
     from src.end_to_end_helper import analyze_single_sample
@@ -34,7 +33,6 @@ def _():
         plt,
         random,
         sea_clutter,
-        simulate_sequence_with_realistic_targets,
         simulate_sequence_with_realistic_targets_and_masks,
         time,
         torch,
@@ -174,7 +172,7 @@ def _(mo):
     # Control target signal strength - higher values create easier detection scenarios
     # This determines the Signal-to-Noise Ratio (SNR) for target visibility
     target_signal_power = mo.ui.slider(start=1, stop=30, value=20, step=1, label="Target Signal Power (dB)")
-    noise_power = 0
+    noise_power = 1
     mo.hstack([target_signal_power])
     return noise_power, target_signal_power
 
@@ -214,6 +212,7 @@ def _(
     mo,
     noise_power,
     np,
+    simulate_sequence_with_realistic_targets_and_masks,
     radar_n_pulses,
     radar_n_ranges,
     radar_prf,
@@ -221,7 +220,6 @@ def _(
     sea_clutter,
     seq_frame_rate,
     seq_total_time,
-    simulate_sequence_with_realistic_targets,
     target_n_targets,
     target_signal_power,
     target_type_select,
@@ -266,8 +264,8 @@ def _(
             sim_targets.append(sim_tgt)
 
     # Generate sequence using simulation module with SNR controls
-    sim_rdm_list = simulate_sequence_with_realistic_targets(
-        sim_rp, sim_cp, sim_sp, sim_targets, random_roll=False, 
+    sim_rdm_list, _ = simulate_sequence_with_realistic_targets_and_masks(
+        sim_rp, sim_cp, sim_sp, sim_targets, 
         thermal_noise_db=1, target_signal_power=target_signal_power.value
     )
 
@@ -290,7 +288,7 @@ def _(
     - **Frames**: {len(sim_rdm_list)} frames at {sim_sp.frame_rate_hz} Hz \t 
     - **Duration**: {len(sim_rdm_list)/sim_sp.frame_rate_hz:.1f} seconds\t
     - **Targets**: {target_n_targets.value} x {target_type_select.value}\t
-    - **SNR**: {target_signal_power.value - noise_power:.1f} dB\t
+    - **SNR**: {target_signal_power.value} dB\t
 
     *Use the interactive frame viewer below to explore the sequence.*
     """)
@@ -580,7 +578,7 @@ def _(
             'snr_params': {
                 'target_signal_power_db': target_signal_power.value,
                 'noise_power_db': noise_power,
-                'snr_db': target_signal_power.value - noise_power
+                'snr_db': target_signal_power.value
             },
             'class_names': [f"{targets_idx}_targets" for targets_idx in range(dataset_config.value["dataset_max_targets"] + 1)],
             'data_format': 'dB_scale',  # Data is stored in dB scale, normalization applied during loading

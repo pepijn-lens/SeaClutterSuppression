@@ -1,20 +1,12 @@
 from typing import List
-import torch
 import numpy as np
-import random
-from tqdm import tqdm
 import sea_clutter
-
-MIN_RANGE = 30  # Minimum range for targets
-MAX_RANGE = 128 - 30  # Maximum range for targets
-
 
 def simulate_sequence_with_realistic_targets_and_masks(
     rp: sea_clutter.RadarParams,
     cp: sea_clutter.ClutterParams,
     sp: sea_clutter.SequenceParams,
     targets: List[sea_clutter.RealisticTarget],
-    random_roll: bool = False,
     *,
     thermal_noise_db: float = 1,
     target_signal_power: float = None
@@ -25,10 +17,6 @@ def simulate_sequence_with_realistic_targets_and_masks(
     speckle_tail = None
     rdm_list: list[np.ndarray] = []
     mask_list: list[np.ndarray] = []
-
-    if random_roll:
-        # Randomly roll the texture to simulate wave motion
-        random_roll_bins = random.randint(-1200, 1200)
 
     for frame_idx in range(sp.n_frames):
         if texture is not None and cp.wave_speed_mps != 0:
@@ -90,159 +78,66 @@ def simulate_sequence_with_realistic_targets_and_masks(
         # Compute RD map
         rdm = sea_clutter.compute_range_doppler(clutter_td, rp, cp)
 
-        # Apply same roll to both RDM and mask
-        if random_roll:
-            rdm = np.roll(rdm, shift=random_roll_bins, axis=1)
-            target_mask = np.roll(target_mask, shift=random_roll_bins, axis=1)
-
         rdm_list.append(rdm)
         mask_list.append(target_mask)
     
     return rdm_list, mask_list
 
-def generate_segmentation_dataset_with_sequences(
-    samples_per_class: int = 500,
-    max_targets: int = 10,
-    sea_state: int = 5,
-    n_frames: int = 3,
-    save_path: str = "data/sea_clutter_segmentation_sequences.pt"
-) -> None:
-    """
-    Generate dataset for target segmentation with sequences and binary masks.
-    
-    Args:
-        samples_per_class: Number of samples to generate per class
-        max_targets: Maximum number of targets (classes will be 0 to max_targets)
-        sea_state: WMO sea state to use
-        n_frames: Number of frames per sequence
-        save_path: Path to save the PyTorch file
-    """
-    
-    # Initialize parameters
-    rp = sea_clutter.RadarParams()
-    cp = sea_clutter.get_clutter_params_for_sea_state(sea_state)
-    
-    # Set sequence parameters
-    sp = sea_clutter.SequenceParams()
-    sp.n_frames = n_frames
-    
-    print(f"Generating segmentation dataset with {samples_per_class} sequences per class")
-    print(f"Classes: 0 to {max_targets} targets")
-    print(f"Frames per sequence: {n_frames}")
-    print(f"Sea state: {sea_state}")
-    print(f"Range-Doppler map size: {rp.n_ranges} x {rp.n_pulses}")
-    
-    # Storage for data and labels
-    all_sequences = []
-    all_mask_sequences = []
-    all_labels = []
-    
-    # Generate data for each class
-    for n_targets in range(max_targets + 1):
-        print(f"\nGenerating {samples_per_class} sequences for {n_targets} targets...")
-        
-        for i in tqdm(range(samples_per_class), desc=f"Class {n_targets}"):
-            # Generate targets for this sequence
-            targets = []
-            if n_targets > 0:
-                for _ in range(n_targets):
-                    target = sea_clutter.create_realistic_target(
-                        sea_clutter.TargetType.FIXED, 
-                        random.randint(MIN_RANGE, MAX_RANGE), 
-                        rp
-                    )
-                    targets.append(target)
-            
-            # Generate sequence of RDMs and masks
-            rdm_list, mask_list = simulate_sequence_with_realistic_targets_and_masks(rp, cp, sp, targets)
-            
-            # Process each frame in the sequence
-            processed_sequence = []
-            processed_mask_sequence = []
-            
-            for rdm, mask in zip(rdm_list, mask_list):
-                # Convert to dB scale only (no normalization at storage time)
-                # Normalization will be applied during data loading for training/evaluation
-                rdm_db = 20 * np.log10(np.abs(rdm) + 1e-10)
-                processed_sequence.append(rdm_db)
-                processed_mask_sequence.append(mask)
-            
-            # Stack frames into sequence arrays
-            sequence = np.stack(processed_sequence, axis=0)  # Shape: (n_frames, n_ranges, n_doppler_bins)
-            mask_sequence = np.stack(processed_mask_sequence, axis=0)  # Shape: (n_frames, n_ranges, n_doppler_bins)
-            
-            # Store sequence and label
-            all_sequences.append(sequence)
-            all_mask_sequences.append(mask_sequence)
-            all_labels.append(n_targets)
-    
-    # Convert to numpy arrays
-    sequences = np.array(all_sequences)  # Shape: (total_samples, n_frames, n_ranges, n_doppler_bins)
-    mask_sequences = np.array(all_mask_sequences)  # Shape: (total_samples, n_frames, n_ranges, n_doppler_bins)
-    labels = np.array(all_labels)  # Shape: (total_samples,)
-    
-    print(f"\nDataset generated!")
-    print(f"Total sequences: {len(sequences)}")
-    print(f"Sequence shape: {sequences.shape}")
-    print(f"Mask sequence shape: {mask_sequences.shape}")
-    print(f"Labels shape: {labels.shape}")
-    
-    # Convert to PyTorch tensors
-    sequences_tensor = torch.from_numpy(sequences).float()
-    mask_sequences_tensor = torch.from_numpy(mask_sequences).float()
-    labels_tensor = torch.from_numpy(labels).long()
-    
-    # Create dataset dictionary
-    dataset = {
-        'sequences': sequences_tensor,
-        'masks': mask_sequences_tensor,
-        'labels': labels_tensor,
-        'metadata': {
-            'samples_per_class': samples_per_class,
-            'max_targets': max_targets,
-            'sea_state': sea_state,
-            'n_frames': n_frames,
-            'n_ranges': rp.n_ranges,
-            'n_doppler_bins': rp.n_pulses,
-            'range_resolution': rp.range_resolution,
-            'class_names': [f"{i}_targets" for i in range(max_targets + 1)],
-            'data_format': 'dB_scale',  # Data is stored in dB scale, normalization applied during loading
-            'dataset_type': 'sequence_segmentation'
-        }
-    }
-    
-    # Save to file
-    torch.save(dataset, save_path)
-    print(f"\nDataset saved to: {save_path}")
-    
-    # Calculate file size
-    total_size = (sequences_tensor.element_size() * sequences_tensor.nelement() + 
-                  mask_sequences_tensor.element_size() * mask_sequences_tensor.nelement()) / (1024**2)
-    print(f"File size: {total_size:.1f} MB")
-
 
 if __name__ == "__main__":
-    import argparse
+    n_targets = 5  # Number of targets to generate
+    gen_target_type = sea_clutter.TargetType.SPEEDBOAT  # Type of target to generate
+    import random
+    gen_rp = sea_clutter.RadarParams()  # Radar parameters
+    gen_cp = sea_clutter.ClutterParams()
+    gen_cp.mean_power_db = 10.0  # Set clutter power
+    gen_cp.bragg_power_rel = 0
+    gen_sp = sea_clutter.SequenceParams()  # Sequence parameters
 
-    parser = argparse.ArgumentParser(description="Generate synthetic sea clutter datasets")
-    parser.add_argument("--samples", type=int, default=500,
-                        help="Number of sequences to generate for each class")
-    parser.add_argument("--max-targets", type=int, default=10,
-                        help="Maximum number of targets present in the RD map")
-    parser.add_argument("--sea-state", type=int, default=5,
-                        help="WMO sea state used for the simulation")
-    parser.add_argument("--frames", type=int, default=3,
-                        help="Number of frames per sequence")
-    parser.add_argument("--save-path", type=str,
-                        default="sea_clutter_segmentation_sequences.pt",
-                        help="Path where the generated dataset will be saved")
+    # Generate targets for this sequence
+    gen_targets = []
+    if n_targets > 0:
+        for _ in range(n_targets):
+            gen_target = sea_clutter.create_realistic_target(
+                gen_target_type, 
+                random.randint(30, gen_rp.n_ranges - 30), 
+                gen_rp
+            )
+            gen_targets.append(gen_target)
 
-    args = parser.parse_args()
-
-    generate_segmentation_dataset_with_sequences(
-        samples_per_class=args.samples,
-        max_targets=args.max_targets,
-        sea_state=args.sea_state,
-        n_frames=args.frames,
-        save_path=args.save_path,
+    # Generate sequence of RDMs and masks with SNR controls
+    gen_rdm_list, gen_mask_list = simulate_sequence_with_realistic_targets_and_masks(
+        gen_rp, gen_cp, gen_sp, gen_targets, 
+        thermal_noise_db=1, target_signal_power=20
     )
+
+    # Process each frame in the sequence
+    gen_processed_sequence = []
+    gen_processed_mask_sequence = []
+
+    for gen_rdm, gen_mask in zip(gen_rdm_list, gen_mask_list):
+        # Convert to dB scale only (no normalization at storage time)
+        # Normalization will be applied during data loading for training/evaluation
+        gen_rdm_db = 20 * np.log10(np.abs(gen_rdm) + 1e-10)
+        gen_processed_sequence.append(gen_rdm_db)
+        gen_processed_mask_sequence.append(gen_mask)
+
+    # Stack frames into sequence arrays
+    gen_sequence = np.stack(gen_processed_sequence, axis=0)
+    gen_mask_sequence = np.stack(gen_processed_mask_sequence, axis=0)
+
+    # Plot only the first frame of the generated sequence and mask
+    import matplotlib.pyplot as plt
+
+    plt.figure(figsize=(10, 4))
+    plt.subplot(1, 2, 1)
+    plt.imshow(gen_sequence[0], cmap='viridis', vmin=0, vmax=45)
+    plt.title('RDM Frame 1')
+    plt.colorbar(label='Power (dB)')
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(gen_mask_sequence[0], cmap='gray')
+    plt.title('Mask Frame 1')
+
+    plt.tight_layout()
+    plt.show()

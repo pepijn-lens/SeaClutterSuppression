@@ -18,7 +18,7 @@ class RadarParams:
 @dataclass
 class ClutterParams:
     mean_power_db: float = 15.0        # Increase from 0.0 → much stronger clutter
-    shape_param: float = 0.1           # Increase from 0.01 → more spiky/impulsive
+    shape_param: float = 0.3           # Increase from 0.01 → more spiky/impulsive
     ar_coeff: float = 0.85             # Decrease from 0.98 → faster decorrelation
     bragg_offset_hz: Optional[float] = 45.0  # Increase from 25.0 → stronger Bragg lines
     bragg_width_hz: float = 4.0        # Increase from 2.0 → broader Bragg peaks
@@ -28,31 +28,26 @@ class ClutterParams:
 
 @dataclass
 class Target:
-    rng_idx: int
-    doppler_hz: float
-    power: float = 10.0             # Linear power for the central cell
+    rng_idx: int = 30
+    doppler_hz: float = 2000
+    power: float = 20.0             # Linear power for the central cell
     size: int = 1                   # Target size in pixels (range bins)
 
 @dataclass
 class SequenceParams:
-    n_frames: int = 1             # Frames to simulate
+    n_frames: int = 6             # Frames to simulate
     frame_rate_hz: float = 2      # Frames per second
 
 class TargetType(Enum):
-    FISHING_VESSEL = "fishing"      # Slow, meandering, affected by waves
-    CARGO_SHIP = "cargo"           # Fast, steady course, less affected by waves  
-    PATROL_BOAT = "patrol"         # Variable speed, frequent course changes
-    SMALL_CRAFT = "small"          # Very affected by waves, erratic movement
-    SAILBOAT = "sailboat"          # Wind-dependent, gentle movements
+    CARGO_SHIP = "cargo"           # Fast, steady course, less affected by waves   
     SPEEDBOAT = "speedboat"        # Fast, agile, sudden speed changes
-    FIXED = "fixed"                # No specific target, used for clutter only
 
 @dataclass
 class RealisticTarget:
     rng_idx: int
     doppler_hz: float
-    power: float = 10.0
-    target_type: TargetType = TargetType.CARGO_SHIP
+    power: float = 20.0
+    target_type: TargetType = TargetType.SPEEDBOAT
     size: int = 1                       # Target size in pixels (range bins)
     
     # Movement parameters

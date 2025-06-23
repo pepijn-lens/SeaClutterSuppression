@@ -33,7 +33,7 @@ This work demonstrates how AI, particularly deep learning, can be applied to rea
 ### Marimo Notebook usage
 This repository includes a Marimo notebook which allows its users to design their own sea cluttered Range Doppler maps, generate a dataset and finally train a Unet on it. Use the following command to run: 
 ```bash
-marimo run sea_clutter_interactive_notebook.py
+marimo run app.py
 ```
 
 ## Acknowledgments

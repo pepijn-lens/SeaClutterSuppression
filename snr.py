@@ -2,8 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import cdist
 from sklearn.cluster import DBSCAN
+from filterpy.kalman import KalmanFilter
+from filterpy.common import Q_discrete_white_noise
 import time
 import torch
+import os
 
 # Set random seed for reproducibility
 np.random.seed(42)
@@ -11,16 +14,152 @@ np.random.seed(42)
 # Parameters
 num_range_bins = 128
 num_doppler_bins = 128
-max_distance = 3  # Maximum pixel distance for target matching
+max_distance = 1  # Maximum pixel distance for target matching
 
 # CFAR parameters
-pfa_values = [1e-4, 1e-3]  # Different false alarm probabilities
+pfa_values = [1e-4]  # Different false alarm probabilities
 guard_cells = 3
 training_cells = 10
 
 # Dataset parameters
-dataset_path = '/Users/pepijnlens/Documents/SeaClutterSuppression/data/my_sea_clutter_dataset.pt'
-num_samples_to_test = 100  # Number of samples from dataset to test
+dataset_path = '/Users/pepijnlens/Documents/SeaClutterSuppression/data/tracks_kalman.pt'
+num_samples_to_test = 3  # Number of samples from dataset to test
+
+# Tracking parameters
+max_track_age = 5  # Maximum frames without detection before deleting track
+min_track_hits = 2  # Minimum detections to confirm track
+association_threshold = 5.0  # Maximum distance for data association (pixels)
+
+class Track:
+    """Track object for multi-target tracking"""
+    def __init__(self, detection, track_id, frame_num):
+        self.track_id = track_id
+        self.kf = self._initialize_kalman_filter(detection)
+        self.hits = 1
+        self.hit_streak = 1
+        self.age = 1
+        self.time_since_update = 0
+        self.history = [detection]
+        self.start_frame = frame_num
+        
+    def _initialize_kalman_filter(self, detection):
+        """Initialize Kalman filter for 2D position with constant velocity model"""
+        kf = KalmanFilter(dim_x=4, dim_z=2)
+        
+        # State vector: [x, y, vx, vy]
+        kf.x = np.array([detection[0], detection[1], 0., 0.]).reshape((4, 1))
+        
+        # State transition matrix (constant velocity model)
+        dt = 1.0  # Time step (1 frame)
+        kf.F = np.array([[1., 0., dt, 0.],
+                        [0., 1., 0., dt],
+                        [0., 0., 1., 0.],
+                        [0., 0., 0., 1.]])
+        
+        # Measurement matrix (observe position only)
+        kf.H = np.array([[1., 0., 0., 0.],
+                        [0., 1., 0., 0.]])
+        
+        # Measurement noise covariance
+        kf.R *= 2.0  # Measurement uncertainty
+        
+        # Process noise covariance
+        kf.Q = Q_discrete_white_noise(dim=2, dt=dt, var=0.5, block_size=2)
+        
+        # Initial covariance
+        kf.P *= 100.0
+        
+        return kf
+    
+    def predict(self):
+        """Predict next state"""
+        self.kf.predict()
+        self.age += 1
+        self.time_since_update += 1
+        
+    def update(self, detection):
+        """Update track with new detection"""
+        self.kf.update(detection)
+        self.hits += 1
+        self.hit_streak += 1
+        self.time_since_update = 0
+        self.history.append(detection)
+        
+    def get_state(self):
+        """Get current position estimate"""
+        return self.kf.x[:2].flatten()
+
+class MultiTargetTracker:
+    """Multi-target tracker using Kalman filters"""
+    def __init__(self, max_age=5, min_hits=2, association_threshold=5.0):
+        self.max_age = max_age
+        self.min_hits = min_hits
+        self.association_threshold = association_threshold
+        self.tracks = []
+        self.track_id_count = 0
+        
+    def update(self, detections, frame_num):
+        """Update tracker with new detections"""
+        # Predict all tracks
+        for track in self.tracks:
+            track.predict()
+            
+        # Data association using Hungarian algorithm (simplified with greedy approach)
+        matched_tracks, unmatched_dets, unmatched_tracks = self._associate_detections_to_tracks(detections)
+        
+        # Update matched tracks
+        for track_idx, det_idx in matched_tracks:
+            self.tracks[track_idx].update(detections[det_idx])
+            
+        # Create new tracks for unmatched detections
+        for det_idx in unmatched_dets:
+            self.track_id_count += 1
+            new_track = Track(detections[det_idx], self.track_id_count, frame_num)
+            self.tracks.append(new_track)
+            
+        # Mark unmatched tracks
+        for track_idx in unmatched_tracks:
+            self.tracks[track_idx].hit_streak = 0
+            
+        # Remove old tracks
+        self.tracks = [t for t in self.tracks if t.time_since_update <= self.max_age]
+        
+        # Return confirmed tracks
+        confirmed_tracks = [t for t in self.tracks if t.hits >= self.min_hits or t.hit_streak >= 1]
+        return confirmed_tracks
+    
+    def _associate_detections_to_tracks(self, detections):
+        """Associate detections to tracks using distance threshold"""
+        if len(self.tracks) == 0:
+            return [], list(range(len(detections))), []
+            
+        if len(detections) == 0:
+            return [], [], list(range(len(self.tracks)))
+            
+        # Calculate distance matrix
+        track_positions = np.array([track.get_state() for track in self.tracks])
+        detection_positions = np.array(detections)
+        
+        distance_matrix = cdist(track_positions, detection_positions)
+        
+        # Simple greedy association
+        matched_tracks = []
+        matched_detections = set()
+        matched_track_indices = set()
+        
+        for track_idx in range(len(self.tracks)):
+            for det_idx in range(len(detections)):
+                if (distance_matrix[track_idx, det_idx] <= self.association_threshold and 
+                    det_idx not in matched_detections and track_idx not in matched_track_indices):
+                    matched_tracks.append((track_idx, det_idx))
+                    matched_detections.add(det_idx)
+                    matched_track_indices.add(track_idx)
+                    break
+        
+        unmatched_dets = [i for i in range(len(detections)) if i not in matched_detections]
+        unmatched_tracks = [i for i in range(len(self.tracks)) if i not in matched_track_indices]
+        
+        return matched_tracks, unmatched_dets, unmatched_tracks
 
 def ca_cfar_detector(rd_map_db, pfa, guard_cells=1, training_cells=10):
     """CA-CFAR detector implementation following MATLAB phased.CFARDetector"""
@@ -119,16 +258,16 @@ def match_targets_to_detections(true_targets, detection_clusters, max_dist=0):
     
     return true_positives, false_negatives, false_positives
 
-def extract_rd_map_and_targets(data, sample_idx):
+def extract_rd_map_and_targets(data, sample_idx, frame_idx=0):
     """Extract range-doppler map and target locations from dataset"""
-    # Use the first frame (index 0) from the sequence
-    rd_map = data['sequences'][sample_idx, 0].numpy()  # Shape: (128, 128)
+    # Use the specified frame from the sequence
+    rd_map = data['sequences'][sample_idx, frame_idx].numpy()  # Shape: (128, 128)
     num_targets = data['labels'][sample_idx].item()
     
     target_locations = []
     if num_targets > 0:
-        # Get target mask for the first frame
-        target_mask = data['masks'][sample_idx, 0].numpy()  # Shape: (128, 128)
+        # Get target mask for the specified frame
+        target_mask = data['masks'][sample_idx, frame_idx].numpy()  # Shape: (128, 128)
         
         # Find target positions from the mask
         target_positions = np.where(target_mask > 0)
@@ -162,10 +301,11 @@ print(f"Max targets in dataset: {data['metadata']['max_targets']}")
 print(f"Target type: {data['metadata']['target_type']}")
 print(f"SNR parameters: {data['metadata']['snr_params']}")
 
-# Run CFAR analysis on dataset
-print("Running CFAR analysis on dataset...")
+# Run CFAR analysis with multi-frame tracking
+print("Running CFAR analysis with Kalman filter tracking...")
 print(f"Testing {num_samples_to_test} random samples with {len(pfa_values)} PFA values")
 print(f"PFA values: {pfa_values}")
+print(f"Using multi-frame tracking across {data['sequences'].shape[1]} frames per sample")
 print("-" * 60)
 
 # Generate random sample indices for consistent sampling across all PFA values
@@ -174,6 +314,7 @@ random_sample_indices = np.random.choice(total_samples, size=min(num_samples_to_
 print(f"Selected {len(random_sample_indices)} random samples from {total_samples} total samples")
 
 results = {}
+tracking_results = {}
 start_time = time.time()
 total_configs = len(pfa_values)
 config_count = 0
@@ -190,8 +331,11 @@ for pfa_idx, pfa in enumerate(pfa_values):
     fp_total = 0
     total_targets = 0
     total_cells = 0
+    total_tracks_created = 0
+    total_tracks_confirmed = 0
     
     results[pfa] = {'sample_idx': [], 'pd': [], 'pfa_empirical': [], 'tp': [], 'fp': [], 'fn': []}
+    tracking_results[pfa] = {'sample_tracks': [], 'track_accuracy': [], 'track_continuity': []}
     
     # Progress bar setup for samples
     sample_progress_interval = max(1, len(random_sample_indices) // 10)  # Update every 10%
@@ -201,23 +345,61 @@ for pfa_idx, pfa in enumerate(pfa_values):
             progress_pct = 100 * (i + 1) / len(random_sample_indices)
             print(f"  Sample {i + 1}/{len(random_sample_indices)} (idx {sample_idx}, {progress_pct:.0f}%)", end='\r')
         
-        rd_map_db, true_targets, num_targets_sample = extract_rd_map_and_targets(data, sample_idx)
-        detections = ca_cfar_detector(rd_map_db, pfa, guard_cells, training_cells)
-        detection_clusters = cluster_detections(detections)
+        # Initialize tracker for this sample
+        tracker = MultiTargetTracker(max_track_age, min_track_hits, association_threshold)
+        sample_tracks = []
+        frame_detections = []
+        frame_true_targets = []
         
-        tp, fn, fp = match_targets_to_detections(true_targets, detection_clusters, max_distance)
+        # Process all frames in this sample sequence for multi-frame tracking
+        num_frames = data['sequences'].shape[1]
+        sample_tp, sample_fn, sample_fp = 0, 0, 0
+        sample_targets = 0
         
-        tp_total += tp
-        fn_total += fn
-        fp_total += fp
-        total_targets += len(true_targets)
-        total_cells += num_range_bins * num_doppler_bins - len(true_targets)
+        for frame_idx in range(num_frames):
+            rd_map_db, true_targets, num_targets_sample = extract_rd_map_and_targets(data, sample_idx, frame_idx)
+            detections = ca_cfar_detector(rd_map_db, pfa, guard_cells, training_cells)
+            detection_clusters = cluster_detections(detections)
+            
+            # Update tracker with new detections
+            confirmed_tracks = tracker.update(detection_clusters, frame_idx)
+            
+            # Store frame data for analysis
+            frame_detections.append(detection_clusters)
+            frame_true_targets.append(true_targets)
+            
+            # Calculate frame-level metrics for each frame
+            tp, fn, fp = match_targets_to_detections(true_targets, detection_clusters, max_distance)
+            sample_tp += tp
+            sample_fn += fn
+            sample_fp += fp
+            sample_targets += len(true_targets)
         
-        # Store per-sample results
+        # Add sample metrics to totals
+        tp_total += sample_tp
+        fn_total += sample_fn
+        fp_total += sample_fp
+        total_targets += sample_targets
+        total_cells += num_frames * (num_range_bins * num_doppler_bins) - sample_targets
+        
+        # Analyze tracking performance for this sample
+        confirmed_tracks = [t for t in tracker.tracks if t.hits >= min_track_hits]
+        total_tracks_created += len(tracker.tracks)
+        total_tracks_confirmed += len(confirmed_tracks)
+        
+        # Store tracking results
+        sample_tracks.append({
+            'tracks': confirmed_tracks,
+            'detections_per_frame': frame_detections,
+            'true_targets_per_frame': frame_true_targets
+        })
+        
+        # Store per-sample results (using aggregated multi-frame metrics)
         results[pfa]['sample_idx'].append(sample_idx)
-        results[pfa]['tp'].append(tp)
-        results[pfa]['fp'].append(fp)
-        results[pfa]['fn'].append(fn)
+        results[pfa]['tp'].append(sample_tp)
+        results[pfa]['fp'].append(sample_fp)
+        results[pfa]['fn'].append(sample_fn)
+        tracking_results[pfa]['sample_tracks'].append(sample_tracks)
     
     # Calculate overall metrics for this PFA
     detection_probability = tp_total / total_targets if total_targets > 0 else 0
@@ -231,8 +413,9 @@ for pfa_idx, pfa in enumerate(pfa_values):
     elapsed_time = time.time() - start_time
     remaining_configs = total_configs - config_count
     
-    print(f"\n  Results: Pd = {detection_probability:.3f}, Empirical PFA = {empirical_pfa:.2e}")
+    print(f"\n  Detection Results: Pd = {detection_probability:.3f}, Empirical PFA = {empirical_pfa:.2e}")
     print(f"  True Positives: {tp_total}, False Positives: {fp_total}, False Negatives: {fn_total}")
+    print(f"  Tracking Results: {total_tracks_created} tracks created, {total_tracks_confirmed} confirmed")
     print(f"  Total Targets: {total_targets}, Total Samples: {len(random_sample_indices)}")
     
     if remaining_configs > 0:
@@ -294,16 +477,10 @@ for sample_idx in visualization_indices:
                     markeredgewidth=2, label='True Targets' if (r_idx, d_idx) == true_targets[0] else "")
         
         # Mark CFAR detections
-        detection_points = np.where(detections == 1)
-        if len(detection_points[0]) > 0:
-            ax2.plot(detection_points[1], detection_points[0], 'go', markersize=4, 
-                    markerfacecolor='none', markeredgewidth=1, label='CFAR Detections')
-        
-        # Mark detection clusters (centroids)
-        if detection_clusters:
-            cluster_array = np.array(detection_clusters)
-            ax2.plot(cluster_array[:, 1], cluster_array[:, 0], 'yo', markersize=10, 
-                    markerfacecolor='none', markeredgewidth=2, label='Detection Clusters')
+        for idx, centroid in enumerate(detection_clusters):
+            r_idx, d_idx = int(centroid[0]), int(centroid[1])
+            ax2.plot(d_idx, r_idx, 'go', markersize=4, markerfacecolor='none', 
+                    markeredgewidth=1, label='Detection Cluster' if idx == 0 else "")
         
         if pfa_idx == 0:  # Add legend only to first subplot
             ax2.legend()
@@ -312,10 +489,81 @@ for sample_idx in visualization_indices:
     
     # Save the figure
     filename = f'rd_map_sample_{sample_idx}_cfar_comparison.png'
+    os.makedirs('snr_plots', exist_ok=True)
     plt.savefig(f'snr_plots/{filename}', dpi=300, bbox_inches='tight')
     plt.close()
     
     print(f"  Saved: {filename}")
+
+# Generate tracking visualization for multi-frame sequences
+print("\nGenerating tracking visualization...")
+for sample_idx in visualization_indices:
+    pfa = pfa_values[0]  # Use the first (and only) PFA value
+    
+    # Initialize tracker for this sample
+    tracker = MultiTargetTracker(max_track_age, min_track_hits, association_threshold)
+    
+    # Create a figure for multi-frame tracking
+    num_frames = data['sequences'].shape[1]
+    fig, axes = plt.subplots(1, num_frames, figsize=(5*num_frames, 5))
+    if num_frames == 1:
+        axes = [axes]
+    
+    track_colors = plt.cm.Set1(np.linspace(0, 1, 10))  # Colors for different tracks
+    
+    for frame_idx in range(num_frames):
+        rd_map_db, true_targets, _ = extract_rd_map_and_targets(data, sample_idx, frame_idx)
+        detections = ca_cfar_detector(rd_map_db, pfa, guard_cells, training_cells)
+        detection_clusters = cluster_detections(detections)
+        
+        # Update tracker
+        confirmed_tracks = tracker.update(detection_clusters, frame_idx)
+        
+        # Plot the frame
+        ax = axes[frame_idx]
+        im = ax.imshow(rd_map_db, aspect='auto', origin='lower', cmap='viridis')
+        ax.set_title(f'Frame {frame_idx + 1}\nTracks: {len(confirmed_tracks)}')
+        ax.set_xlabel('Doppler Bin')
+        ax.set_ylabel('Range Bin')
+        
+        # Mark true targets
+        for r_idx, d_idx in true_targets:
+            ax.plot(d_idx, r_idx, 'ro', markersize=8, markerfacecolor='none', 
+                   markeredgewidth=2, label='True Target' if (r_idx, d_idx) == true_targets[0] else "")
+        
+        # Mark current detections
+        for det in detection_clusters:
+            ax.plot(det[1], det[0], 'go', markersize=6, markerfacecolor='none', 
+                   markeredgewidth=1.5, label='Detection' if det is detection_clusters[0] else "")
+        
+        # Draw tracks
+        for track in confirmed_tracks:
+            if track.hits >= min_track_hits:
+                color = track_colors[track.track_id % len(track_colors)]
+                current_pos = track.get_state()
+                
+                # Draw current position
+                ax.plot(current_pos[1], current_pos[0], 's', color=color, markersize=8, 
+                       markerfacecolor='none', markeredgewidth=2,
+                       label=f'Track {track.track_id}' if track.track_id <= 3 else "")
+                
+                # Draw track history if available
+                if len(track.history) > 1:
+                    history = np.array(track.history)
+                    ax.plot(history[:, 1], history[:, 0], '-', color=color, 
+                           linewidth=2, alpha=0.7)
+        
+        if frame_idx == 0:
+            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    
+    plt.tight_layout()
+    
+    # Save tracking visualization
+    tracking_filename = f'tracking_sample_{sample_idx}_multiframe.png'
+    plt.savefig(f'snr_plots/{tracking_filename}', dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"  Saved tracking: {tracking_filename}")
 
 # Plot PFA analysis results
 plt.figure(figsize=(15, 10))
@@ -380,12 +628,16 @@ plt.grid(True, alpha=0.3)
 # Plot 5: Performance Summary Table
 plt.subplot(2, 3, 5)
 plt.axis('off')
-summary_text = "CA-CFAR PFA Analysis Summary\n\n"
+summary_text = "CA-CFAR with Multi-Frame Kalman Tracking\n\n"
 summary_text += f"Number of random samples tested: {len(random_sample_indices)}\n"
 summary_text += f"Total samples in dataset: {len(data['sequences'])}\n"
+summary_text += f"Frames per sample: {data['sequences'].shape[1]} (all processed)\n"
 summary_text += f"Dataset: {dataset_path.split('/')[-1]}\n"
 summary_text += f"Data format: dB values\n"
 summary_text += f"Target matching distance: {max_distance} pixels\n"
+summary_text += f"Tracking association threshold: {association_threshold} pixels\n"
+summary_text += f"Min track hits: {min_track_hits}\n"
+summary_text += f"Max track age: {max_track_age}\n"
 summary_text += f"Guard cells: {guard_cells}\n"
 summary_text += f"Training cells: {training_cells}\n"
 summary_text += f"Range bins: {num_range_bins}\n"
@@ -443,5 +695,7 @@ for pfa in pfa_list:
     print(f"{pfa:<12.0e} {pd:<8.3f} {emp_pfa:<12.2e} {tp:<6d} {fp:<6d} {fn:<6d}")
 
 print(f"\nBest Detection Probability: {max(pd_list):.3f} at PFA = {pfa_list[np.argmax(pd_list)]:.0e}")
+print(f"Multi-frame tracking: {data['sequences'].shape[1]} frames per sample processed")
+print(f"Kalman filter tracking enabled across all frames")
 print(f"Dataset: {dataset_path}")
-print(f"Analysis completed successfully!")
+print(f"Multi-frame analysis with tracking completed successfully!")
