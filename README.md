@@ -9,8 +9,7 @@ This repository contains the code developed as part of my BSc thesis at **Leiden
 
 The aim of this project is to evaluate and compare the performance of deep learning models in maritime radar target detection, specifically focusing on sea clutter suppression. The pipeline includes:
 
-- Image classification using a **Swin Transformer** and a **CNN**
-- Transition to image segmentation via a **U-Net-based** architecture
+- Image segmentation via a **U-Net-based** architecture
 - Synthetic radar and sea clutter simulation
 
 This work demonstrates how AI, particularly deep learning, can be applied to real-world signal processing problems in radar technology.
