@@ -49,8 +49,6 @@ If you use this work in your research, please cite this repository as described 
 }
 ```
 
-Alternatively, click the "Cite this repository" button on the GitHub project page for more formats.
-
 ## Acknowledgments
 
 I would like to thank my supervisors:
