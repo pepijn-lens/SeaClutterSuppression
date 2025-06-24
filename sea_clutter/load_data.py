@@ -23,7 +23,8 @@ class RadarSegmentationDataset(Dataset):
         val_ratio: float = 0.15,
         test_ratio: float = 0.15,
         random_state: int = 42,
-        visualize: Optional[bool] = False
+        visualize: Optional[bool] = False,
+        normalize: bool = True
     ):
         """
         Initialize the dataset.
@@ -42,6 +43,7 @@ class RadarSegmentationDataset(Dataset):
         
         self.split = split
         self.visualize = visualize
+        self.normalize = normalize  # Normalize data by default
         
         # Load the dataset
         print(f"Loading dataset from: {dataset_path}")
@@ -150,14 +152,17 @@ class RadarSegmentationDataset(Dataset):
 
         # Apply normalization to the sequence data (data is stored in dB scale)
         # Normalize each frame independently with its own mean and std
-        normalized_sequence = []
-        for frame_idx in range(sequence.shape[0]):
-            frame = sequence[frame_idx]
-            # Normalize with frame's own statistics
-            normalized_frame = (frame - frame.mean()) / (frame.std() + 1e-10)
-            normalized_sequence.append(normalized_frame)
+        if self.normalize:
+            normalized_sequence = []
+            for frame_idx in range(sequence.shape[0]):
+                frame = sequence[frame_idx]
+                # Normalize with frame's own statistics
+                normalized_frame = (frame - frame.mean()) / (frame.std() + 1e-10)
+                normalized_sequence.append(normalized_frame)
         
-        normalized_sequence = torch.stack(normalized_sequence, dim=0)
+            normalized_sequence = torch.stack(normalized_sequence, dim=0)
+        else:
+            normalized_sequence = sequence
 
         # For sequence data, use all frames as channels
         if self.is_sequence:
@@ -185,6 +190,7 @@ def create_data_loaders(
     test_ratio: float = 0.15,
     random_state: int = 42,
     pin_memory: bool = False,
+    normalize: bool = True
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Create train, validation, and test data loaders.
@@ -209,6 +215,7 @@ def create_data_loaders(
         val_ratio=val_ratio,
         test_ratio=test_ratio,
         random_state=random_state,
+        normalize=normalize
     )
     
     val_dataset = RadarSegmentationDataset(
@@ -218,6 +225,7 @@ def create_data_loaders(
         val_ratio=val_ratio,
         test_ratio=test_ratio,
         random_state=random_state,
+        normalize=normalize
     )
     
     test_dataset = RadarSegmentationDataset(
@@ -227,6 +235,7 @@ def create_data_loaders(
         val_ratio=val_ratio,
         test_ratio=test_ratio,
         random_state=random_state,
+        normalize=normalize
     )
     
     # Create data loaders

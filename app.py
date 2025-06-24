@@ -366,7 +366,7 @@ def _(frame_slider, mo, np, plt, sequence_data):
         **Current Frame**: {current_frame} / {len(sequence_data['rdm_list'])-1}  
         **Time**: {frame_time:.2f}s / {total_time:.2f}s  
         **Targets**: {sequence_data['n_targets']} x {sequence_data['target_type']}  
-        **SNR**: {sequence_data['target_signal_power'] - sequence_data['noise_power']:.1f} dB  
+        **SNR**: {sequence_data['target_signal_power']} dB  
         **Frame Rate**: {sequence_data['sp'].frame_rate_hz} Hz  
         **RDM Size**: {sequence_data['rp'].n_ranges} x {sequence_data['rp'].n_pulses}  
 
@@ -716,11 +716,11 @@ def _(mo, os):
     )
 
     train_bce_weight = mo.ui.slider(
-        start=0.1, stop=2.0, value=1.0, step=0.1,
+        start=0.0, stop=2.0, value=0.1, step=0.1,
         label="BCE Weight", show_value=True
     )
     train_dice_weight = mo.ui.slider(
-        start=0.1, stop=2.0, value=1.0, step=0.1,
+        start=0.0, stop=2.0, value=0.9, step=0.1,
         label="Dice Weight", show_value=True
     )
 
@@ -934,7 +934,7 @@ def _(mo, os):
 
     # Evaluation parameters
     eval_distance_threshold = mo.ui.slider(
-        start=1.0, stop=15.0, value=5.0, step=0.5,
+        start=0.0, stop=15.0, value=5.0, step=0.5,
         label="Distance Threshold (pixels)", show_value=True
     )
 
@@ -1144,11 +1144,10 @@ def _(mo):
     ### **Repository & Collaboration**
     - **GitHub Repository**: [github.com/pepijn-lens/SeaClutterSuppression](https://github.com/pepijn-lens/SeaClutterSuppression)
     - **Report Issues**: Use GitHub Issues for bug reports and feature requests
-    - **Contribute**: Pull requests welcome!
     - **Documentation**: Comprehensive README and code documentation available in the repository
 
     ### **Contact & Support**
-    - **Email**: pepijn.lens@tno.nl
+    - **Email**: pepijn.lens@icloud.com
     - **Discussions**: Use GitHub Discussions for questions
 
     ### **Citation**

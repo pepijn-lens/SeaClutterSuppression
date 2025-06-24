@@ -12,7 +12,7 @@ class ClusteringModule:
         self.eps = eps
         self.min_samples = min_samples
     
-    def extract_centroids(self, binary_map, threshold=0.1):
+    def extract_centroids(self, binary_map, threshold=0.5):
         """
         Extract centroids from binary map using connected components and DBSCAN
         
