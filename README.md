@@ -36,6 +36,22 @@ This repository includes a Marimo notebook which allows its users to design thei
 marimo run app.py
 ```
 
+## Citation
+
+If you use this work in your research, please cite this repository as described below or see the CITATION.cff file for citation formats:
+
+```bibtex
+@software{Lens_SeaClutterSuppression_2025,
+  author = {Pepijn Lens},
+  title = {End-to-End Target Detection in Range-Doppler Maps with Temporal U-Nets: Deep Learning Approaches for Maritime Radar},
+  url = {https://github.com/pepijn-lens/SeaClutterSuppression},
+  year = {2025},
+  note = {BSc thesis at Leiden University and internship at TNO}
+}
+```
+
+Alternatively, click the "Cite this repository" button on the GitHub project page for more formats.
+
 ## Acknowledgments
 
 I would like to thank my supervisors:
