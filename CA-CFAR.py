@@ -162,8 +162,6 @@ for pfa_idx, pfa in enumerate(pfa_values):
     
     # Process all test samples
     for batch_idx, (sequences, masks, labels) in enumerate(test_loader):
-        if batch_idx > 30:
-            break  # Limit to first 30 samples for testing
         # Extract last frame from sequence (shape: [1, frames, H, W])
         last_frame = sequences[0, -1].numpy()  # Last frame of the sequence
         last_mask = masks[0, -1].numpy()  # Last mask of the sequence
