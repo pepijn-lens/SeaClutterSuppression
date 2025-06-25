@@ -100,7 +100,7 @@ def create_realistic_target(target_type: TargetType, initial_range_idx: int, rp:
         return RealisticTarget(
             rng_idx=initial_range_idx,
             doppler_hz=2.0 * base_velocity / rp.carrier_wavelength,
-            power=np.random.uniform(0.08, 0.15),
+            # power=np.random.uniform(0.08, 0.15),
             target_type=target_type,
             size=3,  # Cargo ships are larger - 3 pixels in range
             base_velocity_mps=base_velocity,
@@ -115,7 +115,7 @@ def create_realistic_target(target_type: TargetType, initial_range_idx: int, rp:
         return RealisticTarget(
             rng_idx=initial_range_idx,
             doppler_hz=2.0 * base_velocity / rp.carrier_wavelength,
-            power=np.random.uniform(0.03, 0.08),
+            power=np.random.randint(20, 22),
             target_type=target_type,
             size=1,  # Speedboats are small - 1 pixel in range
             base_velocity_mps=base_velocity,

@@ -93,38 +93,29 @@ def cluster_detections(detections):
     return clusters
 
 def visualize_sample(last_frame, last_mask, detections, detection_clusters, gt_centroids, sample_idx, pfa):
-    """Visualize the ground truth mask and CFAR detections for a sample"""
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-    
-    # Plot 1: Original RD map
-    im1 = axes[0].imshow(last_frame, cmap='viridis', aspect='auto')
-    axes[0].set_title(f'Sample {sample_idx}: RD Map (dB)')
-    axes[0].set_xlabel('Doppler Bin')
-    axes[0].set_ylabel('Range Bin')
-    plt.colorbar(im1, ax=axes[0])
-    
-    # Plot 2: Ground truth mask
-    axes[1].imshow(last_mask, cmap='gray', aspect='auto')
+    """Visualize the ground truth mask and CFAR detections for a sample (overlapped)"""
+    fig, ax = plt.subplots(1, 1, figsize=(7, 6))
+
+    # Show the ground truth mask as background
+    ax.imshow(last_mask, cmap='gray', aspect='auto', alpha=0.5, label='GT Mask')
+
+    # Overlay CFAR detections as a transparent mask
+    ax.imshow(detections, cmap='Blues', aspect='auto', alpha=0.3, label='CFAR Detections')
+
     # Overlay ground truth centroids
     if gt_centroids:
         gt_x, gt_y = zip(*gt_centroids)
-        axes[1].scatter(gt_x, gt_y, c='red', marker='x', s=100, linewidth=3, label='GT Centroids')
-    axes[1].set_title(f'Ground Truth Mask ({len(gt_centroids)} targets)')
-    axes[1].set_xlabel('Doppler Bin')
-    axes[1].set_ylabel('Range Bin')
-    axes[1].legend()
-    
-    # Plot 3: CFAR detections
-    axes[2].imshow(detections, cmap='gray', aspect='auto')
+        ax.scatter(gt_x, gt_y, c='red', marker='x', s=100, linewidth=3, label='GT Centroids')
+
     # Overlay detection centroids
     if detection_clusters:
         det_x, det_y = zip(*detection_clusters)
-        axes[2].scatter(det_x, det_y, c='blue', marker='o', s=100, alpha=0.7, label='CFAR Detections')
-    axes[2].set_title(f'CFAR Detections (PFA={pfa:.0e}, {len(detection_clusters)} clusters)')
-    axes[2].set_xlabel('Doppler Bin')
-    axes[2].set_ylabel('Range Bin')
-    axes[2].legend()
-    
+        ax.scatter(det_x, det_y, c='blue', marker='o', s=100, alpha=0.7, label='CFAR Detections')
+
+    ax.set_title(f'Sample {sample_idx}: GT Mask & CFAR Detections (PFA={pfa:.0e})')
+    ax.set_xlabel('Doppler Bin')
+    ax.set_ylabel('Range Bin')
+    ax.legend()
     plt.tight_layout()
     plt.show()
 
@@ -210,7 +201,7 @@ for pfa_idx, pfa in enumerate(pfa_values):
         })
         
         # Visualize this sample
-        # visualize_sample(last_frame, last_mask, detections, detection_clusters, gt_centroids, batch_idx, pfa)
+        visualize_sample(last_frame, last_mask, detections, detection_clusters, gt_centroids, batch_idx, pfa)
         
         # Progress update
         if (batch_idx + 1) % 50 == 0 or batch_idx == len(test_loader) - 1:

@@ -84,60 +84,227 @@ def simulate_sequence_with_realistic_targets_and_masks(
     return rdm_list, mask_list
 
 
-if __name__ == "__main__":
-    n_targets = 5  # Number of targets to generate
-    gen_target_type = sea_clutter.TargetType.SPEEDBOAT  # Type of target to generate
+def generate_large_dataset(
+    thermal_noise_db: float = 1
+):
+    """Generate a large dataset with 25000 samples, 3 frames per sample, max 10 targets."""
     import random
-    gen_rp = sea_clutter.RadarParams()  # Radar parameters
-    gen_cp = sea_clutter.ClutterParams()
-    gen_cp.mean_power_db = 10.0  # Set clutter power
-    gen_cp.bragg_power_rel = 0
-    gen_sp = sea_clutter.SequenceParams()  # Sequence parameters
-
-    # Generate targets for this sequence
-    gen_targets = []
-    if n_targets > 0:
-        for _ in range(n_targets):
-            gen_target = sea_clutter.create_realistic_target(
-                gen_target_type, 
-                random.randint(30, gen_rp.n_ranges - 30), 
-                gen_rp
+    import torch
+    
+    # Dataset configuration
+    n_samples = 25000  # Increased to ensure samples per class
+    n_frames = 3
+    max_targets = 10
+    samples_per_class = max(1, n_samples // (max_targets + 1))  # Ensure at least 1 sample per class
+    
+    # Default radar parameters
+    base_rp = sea_clutter.RadarParams()
+    
+    # Target type: speedboat
+    target_type = sea_clutter.TargetType.SPEEDBOAT
+    
+    # Set sequence parameters
+    sp = sea_clutter.SequenceParams()
+    sp.n_frames = n_frames
+    
+    all_sequences = []
+    all_mask_sequences = []
+    all_labels = []
+    
+    # Generate data for each class (0 to max_targets)
+    for n_targets in range(max_targets + 1):
+        for sample_idx in range(samples_per_class):
+            # Random clutter parameters for this sample
+            clutter_params = sea_clutter.ClutterParams(
+                mean_power_db=random.uniform(14.0, 18.0),
+                shape_param=random.uniform(0.3, 0.99),
+                ar_coeff=random.uniform(0.5, 0.99),
+                wave_speed_mps=random.uniform(-6.0, 6.0),
+                bragg_power_rel=0
             )
-            gen_targets.append(gen_target)
-
-    # Generate sequence of RDMs and masks with SNR controls
-    gen_rdm_list, gen_mask_list = simulate_sequence_with_realistic_targets_and_masks(
-        gen_rp, gen_cp, gen_sp, gen_targets, 
-        thermal_noise_db=1, target_signal_power=20
+            
+            # Generate targets for this sequence with random powers
+            targets = []
+            if n_targets > 0:
+                for _ in range(n_targets):
+                    # Random target power between 10-20 dB for each target
+                    target_power = random.uniform(10.0, 21.0)
+                    
+                    target = sea_clutter.create_realistic_target(
+                        target_type, 
+                        random.randint(30, base_rp.n_ranges - 30), 
+                        base_rp
+                    )
+                    # Override the target power with our random value
+                    target.power = target_power
+                    targets.append(target)
+            
+            # Generate sequence of RDMs and masks
+            rdm_list, mask_list = simulate_sequence_with_realistic_targets_and_masks(
+                base_rp, clutter_params, sp, targets, 
+                thermal_noise_db=thermal_noise_db
+            )
+            
+            # Process each frame in the sequence
+            processed_sequence = []
+            processed_mask_sequence = []
+            
+            for rdm, mask in zip(rdm_list, mask_list):
+                # Convert to dB scale
+                rdm_db = 20 * np.log10(np.abs(rdm) + 1e-10)
+                processed_sequence.append(rdm_db)
+                processed_mask_sequence.append(mask)
+            
+            # Stack frames into sequence arrays
+            sequence = np.stack(processed_sequence, axis=0)
+            mask_sequence = np.stack(processed_mask_sequence, axis=0)
+            
+            # Store sequence and label
+            all_sequences.append(sequence)
+            all_mask_sequences.append(mask_sequence)
+            all_labels.append(n_targets)
+    
+    # Convert to numpy arrays
+    sequences = np.array(all_sequences)
+    mask_sequences = np.array(all_mask_sequences)
+    labels = np.array(all_labels)
+    
+    # Convert to PyTorch tensors
+    sequences_tensor = torch.from_numpy(sequences).float()
+    mask_sequences_tensor = torch.from_numpy(mask_sequences).float()
+    labels_tensor = torch.from_numpy(labels).long()
+    
+    # Create dataset dictionary
+    dataset = {
+        'sequences': sequences_tensor,
+        'masks': mask_sequences_tensor,
+        'labels': labels_tensor,
+        'metadata': {
+            'n_samples': n_samples,
+            'samples_per_class': samples_per_class,
+            'max_targets': max_targets,
+            'target_type': target_type.name,
+            'n_frames': n_frames,
+            'n_ranges': base_rp.n_ranges,
+            'n_doppler_bins': base_rp.n_pulses,
+            'target_power_range_db': [10.0, 20.0],
+            'clutter_param_ranges': {
+                'mean_power_db': [14.0, 18.0],  # Fixed to match actual range used
+                'shape_param': [0.3, 0.99],
+                'ar_coeff': [0.5, 0.99],
+                'wave_speed_mps': [-6.0, 6.0]
+            },
+            'class_names': [f"{i}_targets" for i in range(max_targets + 1)],
+            'data_format': 'dB_scale'
+        }
+    }
+    
+    # Calculate dataset size in GB
+    total_bytes = (
+        dataset['sequences'].element_size() * dataset['sequences'].nelement() +
+        dataset['masks'].element_size() * dataset['masks'].nelement() +
+        dataset['labels'].element_size() * dataset['labels'].nelement()
     )
+    dataset_size_gb = total_bytes / (1024**3)
+    
+    return dataset_size_gb, dataset
 
-    # Process each frame in the sequence
-    gen_processed_sequence = []
-    gen_processed_mask_sequence = []
-
-    for gen_rdm, gen_mask in zip(gen_rdm_list, gen_mask_list):
-        # Convert to dB scale only (no normalization at storage time)
-        # Normalization will be applied during data loading for training/evaluation
-        gen_rdm_db = 20 * np.log10(np.abs(gen_rdm) + 1e-10)
-        gen_processed_sequence.append(gen_rdm_db)
-        gen_processed_mask_sequence.append(gen_mask)
-
-    # Stack frames into sequence arrays
-    gen_sequence = np.stack(gen_processed_sequence, axis=0)
-    gen_mask_sequence = np.stack(gen_processed_mask_sequence, axis=0)
-
-    # Plot only the first frame of the generated sequence and mask
+if __name__ == "__main__":
     import matplotlib.pyplot as plt
-
-    plt.figure(figsize=(10, 4))
-    plt.subplot(1, 2, 1)
-    plt.imshow(gen_sequence[0], cmap='viridis', vmin=0, vmax=45)
-    plt.title('RDM Frame 1')
-    plt.colorbar(label='Power (dB)')
-
-    plt.subplot(1, 2, 2)
-    plt.imshow(gen_mask_sequence[0], cmap='gray')
-    plt.title('Mask Frame 1')
-
+    import torch
+    import os
+    
+    print("Generating large dataset...")
+    dataset_size_gb, dataset = generate_large_dataset()
+    
+    print(f"Dataset generated successfully!")
+    print(f"Dataset size: {dataset_size_gb:.2f} GB")
+    print(f"Total samples: {len(dataset['sequences'])}")
+    print(f"Samples per class: {dataset['metadata']['samples_per_class']}")
+    print(f"Number of classes: {dataset['metadata']['max_targets'] + 1}")
+    
+    # Create data directory if it doesn't exist
+    data_dir = "/Users/pepijnlens/Documents/SeaClutterSuppression/data"
+    os.makedirs(data_dir, exist_ok=True)
+    
+    # Save dataset
+    save_path = os.path.join(data_dir, "random.pt")
+    print(f"\nSaving dataset to {save_path}...")
+    torch.save(dataset, save_path)
+    print("Dataset saved successfully!")
+    
+    # Show 10 example plots
+    print("\nGenerating example plots...")
+    
+    fig, axes = plt.subplots(4, 5, figsize=(20, 16))
+    fig.suptitle('Dataset Examples: RDMs (top) and Target Masks (bottom)', fontsize=16)
+    
+    # Select examples from different classes
+    examples_per_class = max(1, 10 // (dataset['metadata']['max_targets'] + 1))
+    plot_idx = 0
+    
+    for n_targets in range(min(dataset['metadata']['max_targets'] + 1, 10)):
+        # Find samples with this number of targets
+        target_indices = (dataset['labels'] == n_targets).nonzero(as_tuple=True)[0]
+        
+        if len(target_indices) > 0:
+            # Take first sample from this class
+            sample_idx = target_indices[0].item()
+            
+            # Get the first frame of the sequence
+            rdm = dataset['sequences'][sample_idx, 0].numpy()  # First frame
+            mask = dataset['masks'][sample_idx, 0].numpy()     # First frame
+            
+            # Plot RDM
+            row = (plot_idx // 5) * 2
+            col = plot_idx % 5
+            
+            im1 = axes[row, col].imshow(rdm, aspect='auto', cmap='viridis', origin='lower')
+            axes[row, col].set_title(f'{n_targets} targets - RDM')
+            axes[row, col].set_xlabel('Doppler Bin')
+            axes[row, col].set_ylabel('Range Bin')
+            plt.colorbar(im1, ax=axes[row, col], shrink=0.8)
+            
+            # Plot mask
+            im2 = axes[row + 1, col].imshow(mask, aspect='auto', cmap='Reds', origin='lower', vmin=0, vmax=1)
+            axes[row + 1, col].set_title(f'{n_targets} targets - Mask')
+            axes[row + 1, col].set_xlabel('Doppler Bin')
+            axes[row + 1, col].set_ylabel('Range Bin')
+            plt.colorbar(im2, ax=axes[row + 1, col], shrink=0.8)
+            
+            plot_idx += 1
+            
+            if plot_idx >= 5:  # Only show first 5 classes
+                break
+    
+    # Hide unused subplots
+    for i in range(plot_idx, 5):
+        axes[0, i].set_visible(False)
+        axes[1, i].set_visible(False)
+        if len(axes) > 2:
+            axes[2, i].set_visible(False)
+            axes[3, i].set_visible(False)
+    
     plt.tight_layout()
     plt.show()
+    
+    # Print some statistics
+    print(f"\nDataset Statistics:")
+    print(f"Sequence shape: {dataset['sequences'].shape}")
+    print(f"Mask shape: {dataset['masks'].shape}")
+    print(f"Labels shape: {dataset['labels'].shape}")
+    
+    # Check if dataset is not empty before computing min/max
+    if dataset['sequences'].numel() > 0:
+        print(f"RDM value range: [{dataset['sequences'].min():.2f}, {dataset['sequences'].max():.2f}] dB")
+    else:
+        print("Dataset is empty - no samples generated")
+    
+    # Class distribution
+    if dataset['labels'].numel() > 0:
+        unique_labels, counts = dataset['labels'].unique(return_counts=True)
+        print(f"\nClass distribution:")
+        for label, count in zip(unique_labels, counts):
+            print(f"  {label} targets: {count} samples")
+    else:
+        print("No labels to show - dataset is empty")
