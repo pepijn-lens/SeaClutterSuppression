@@ -35,7 +35,7 @@ This repository includes a Marimo notebook which allows its users to design thei
 marimo run app.py
 ```
 ### Interactive evaluation
-After training a model on a dataset, there is the option to visualize the performance of the model with and interactive interface. Use the following command:
+After training a model on a dataset, there is the option to visualize the performance of the model with an interactive interface. Use the following command:
 ```bash
 python -m src.end_to_end_evaluate --model [PATH_TO_UNET_MODEL] --dataset [PATH_TO_DATA] --base-filter-size [NUMBER_OF_BASE_FILTERS] --interactive
 ```
