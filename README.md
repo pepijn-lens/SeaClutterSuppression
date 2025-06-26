@@ -34,6 +34,12 @@ This repository includes a Marimo notebook which allows its users to design thei
 ```bash
 marimo run app.py
 ```
+### Interactive evaluation
+After training a model on a dataset, there is the option to visualize the performance of the model with and interactive interface. Use the following command:
+```bash
+python -m src.end_to_end_evaluate --model [PATH_TO_UNET_MODEL] --dataset [PATH_TO_DATA] --base-filter-size [NUMBER_OF_BASE_FILTERS] --interactive
+```
+Notice that the training data had to be saved in the generation section of the marimo app in order to use this feature. The number of base filters parameters are defined in the training section of the marimo app. 
 
 ## Citation
 
