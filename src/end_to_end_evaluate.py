@@ -178,10 +178,10 @@ if __name__ == "__main__":
     parser.add_argument("--base-filter-size", type=int, default=64, help="Base filter size for the U-Net model")
     parser.add_argument("--save-path", type=str, default="end_to_end_results",
                         help="Directory where evaluation figures will be saved")
-    parser.add_argument("--cluster-min-area", type=int, default=3, help="Minimum area for a cluster to be valid")
+    parser.add_argument("--cluster-min-area", type=int, default=1, help="Minimum area for a cluster to be valid")
     parser.add_argument("--cluster-eps", type=float, default=1.0, help="DBSCAN eps parameter")
     parser.add_argument("--cluster-min-samples", type=int, default=1, help="DBSCAN min_samples parameter")
-    parser.add_argument("--distance-threshold", type=float, default=5.0, 
+    parser.add_argument("--distance-threshold", type=float, default=1.5, 
                         help="Distance threshold for spatial evaluation (pixels)")
     parser.add_argument("--interactive", action="store_true", help="Launch interactive sample explorer after evaluation")
 
