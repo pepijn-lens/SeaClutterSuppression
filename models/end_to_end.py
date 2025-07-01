@@ -12,7 +12,7 @@ class ClusteringModule:
         self.eps = eps
         self.min_samples = min_samples
     
-    def extract_centroids(self, binary_map, threshold=0.5):
+    def extract_centroids(self, binary_map, threshold=0.000001):
         """
         Extract centroids from binary map using connected components and DBSCAN
         
@@ -69,7 +69,7 @@ class ClusteringModule:
 
 class EndToEndTargetDetector(nn.Module):
     """End-to-end model: Range-Doppler map -> Binary segmentation -> Target centroids"""
-    def __init__(self, unet_weights_path=None, clustering_params=None, n_channels=3, base_filter_size=64):
+    def __init__(self, unet_weights_path=None, clustering_params=None, n_channels=3, base_filter_size=64, threshold=0.00001):
         super(EndToEndTargetDetector, self).__init__()
         
         # Initialize U-Net with your architecture
@@ -82,6 +82,9 @@ class EndToEndTargetDetector(nn.Module):
         # Move model to MPS
         self.device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
         self.to(self.device)
+        
+        # Store threshold for U-Net confidence map
+        self.threshold = threshold
         
         # Initialize clustering module
         clustering_params = clustering_params or {}
@@ -110,7 +113,7 @@ class EndToEndTargetDetector(nn.Module):
         for i in range(binary_maps.shape[0]):
             # Move single sample to CPU for clustering
             binary_map_cpu = binary_maps[i, 0].cpu().numpy()  # Shape: (128, 128)
-            centroids = self.clustering.extract_centroids(binary_map_cpu)
+            centroids = self.clustering.extract_centroids(binary_map_cpu, threshold=self.threshold)
             batch_centroids.append(centroids)
         
         return batch_centroids

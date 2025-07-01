@@ -6,10 +6,10 @@ import matplotlib.pyplot as plt
 
 # Import required functions
 from sea_clutter.load_data import create_data_loaders
-from src.end_to_end_helper import extract_ground_truth_centroids, spatial_target_matching
+from src.helper import extract_ground_truth_centroids, spatial_target_matching
 
 
-def ca_cfar_detector(rd_map_db, pfa, guard_cells=1, training_cells=4):
+def ca_cfar_detector(rd_map_db, pfa, guard_cells=2, training_cells=10):
     """CA-CFAR detector implementation following MATLAB phased.CFARDetector"""
 
     # Convert from dB to linear magnitude
@@ -403,40 +403,11 @@ if __name__ == "__main__":
 
     # CFAR parameters
     pfa_values = [1e-4, 1e-3]  # Different false alarm probabilities
-    guard_cells = 2
-    training_cells = 10
-
-    # Dataset parameters
-    dataset_path = '/Users/pepijnlens/Documents/SeaClutterSuppression/local_data/random.pt'
-    distance_threshold = 1.5  # Maximum distance for spatial target matching (pixels)
-
-    # Load dataset using the specified function
-    print("Loading dataset...")
-    _, _, test_loader = create_data_loaders(
-        dataset_path=dataset_path,
-        batch_size=1,  # Process one sample at a time
-        num_workers=0,  # No multiprocessing for simpler debugging
-        normalize=False,  # No normalization for raw data
-    )
-
-    print(f"Test dataset loaded: {len(test_loader)} samples")
-
-    # Add option for single sample analysis
-    ANALYZE_SAMPLE = True  # Set to True to analyze just one sample in detail
-
-    if ANALYZE_SAMPLE:
-        print("="*60)
-        print("SINGLE SAMPLE DETAILED ANALYSIS")
-        print("="*60)
-        analyze_single_sample_cfar(test_loader, pfa_values, 
-                                guard_cells, training_cells, distance_threshold)
-        
-    else:
-        evaluate(test_loader)
+    guard_cells = 1
     training_cells = 4
 
     # Dataset parameters
-    dataset_path = '/Users/pepijnlens/Documents/SeaClutterSuppression/local_data/random.pt'
+    dataset_path = '/Users/pepijnlens/Documents/SeaClutterSuppression/data/6SNR_clutter.pt'
     distance_threshold = 1.5  # Maximum distance for spatial target matching (pixels)
 
     # Load dataset using the specified function
@@ -451,7 +422,7 @@ if __name__ == "__main__":
     print(f"Test dataset loaded: {len(test_loader)} samples")
 
     # Add option for single sample analysis
-    ANALYZE_SAMPLE = True  # Set to True to analyze just one sample in detail
+    ANALYZE_SAMPLE = False  # Set to True to analyze just one sample in detail
 
     if ANALYZE_SAMPLE:
         print("="*60)
@@ -462,3 +433,6 @@ if __name__ == "__main__":
         
     else:
         evaluate(test_loader)
+
+
+

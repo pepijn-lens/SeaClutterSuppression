@@ -43,31 +43,3 @@ class UNet(nn.Module):
         x = self.dec1(torch.cat([x, x1], dim=1))
         return self.out_conv(x)
     
-if __name__ == "__main__":
-    # Load dataset
-    data = torch.load("local_data/12SNR_clutter.pt")
-    # Extract input and target
-    sequences = data['sequences'][:30]  # shape: (batch, 3, H, W)
-    masks = data['masks'][:30]          # shape: (batch, num_frames, H, W)
-    # Use the last mask as target
-    targets = masks[:, -1, :, :].unsqueeze(1)  # shape: (batch, 1, H, W)
-
-    device = torch.device("mps" if torch.backends.mps() else "cpu")
-    model = UNet(n_channels=3, n_classes=1, base_filters=64)
-    model.load_state_dict(torch.load("pretrained/12SNR_clutter_64.pt", map_location=device))
-    model.to(device)
-    model.eval()
-
-    sequences = sequences.to(device)
-
-    # Warm-up
-    with torch.no_grad():
-        _ = model(sequences)
-
-    # Measure inference time
-    start_time = time.time()
-    with torch.no_grad():
-        _ = model(sequences)
-    end_time = time.time()
-
-    print(f"Inference time for batch of 30: {(end_time - start_time) * 1000:.2f} ms")

@@ -46,7 +46,6 @@ class RadarSegmentationDataset(Dataset):
         self.normalize = normalize  # Normalize data by default
         
         # Load the dataset
-        print(f"Loading dataset from: {dataset_path}")
         dataset = torch.load(dataset_path, map_location='cpu')
         
         # Check if this is sequence data or single frame data
@@ -56,17 +55,12 @@ class RadarSegmentationDataset(Dataset):
             self.mask_sequences = dataset['masks']  # Shape: (N, n_frames, H, W) or (N, 1, H, W) for single frames
             self.is_sequence = True
             self.n_frames = self.sequences.shape[1] if len(self.sequences.shape) > 3 else 1
-            if self.n_frames > 1:
-                print(f"Loaded sequence dataset with {self.n_frames} frames per sequence")
-            else:
-                print("Loaded single frame dataset (stored as sequences with 1 frame)")
         elif 'images' in dataset:
             # Legacy format - convert to sequence format for compatibility
             self.sequences = dataset['images'].unsqueeze(1)  # Add frame dimension
             self.mask_sequences = dataset['masks'].unsqueeze(1)
             self.is_sequence = False
             self.n_frames = 1
-            print("Loaded legacy single frame dataset, converted to sequence format")
         else:
             raise ValueError("Dataset must contain either 'sequences' or 'images' key")
         
@@ -81,8 +75,6 @@ class RadarSegmentationDataset(Dataset):
         if split != 'all':
             self._create_splits(train_ratio, val_ratio, test_ratio, random_state)
         
-        print(f"Using {split} split with {len(self.sequences)} samples")
-
     
     def _create_splits(self, train_ratio: float, val_ratio: float, test_ratio: float, random_state: int):
         """Create train/validation/test splits."""
@@ -125,9 +117,7 @@ class RadarSegmentationDataset(Dataset):
         self.sequences = self.sequences[split_indices]
         self.mask_sequences = self.mask_sequences[split_indices]
         self.labels = self.labels[split_indices]
-        
-        print(f"Split sizes - Train: {len(train_indices)}, Val: {len(val_indices)}, Test: {len(test_indices)}")
-    
+            
     def __len__(self) -> int:
         """Return the number of samples in the dataset."""
         return len(self.sequences)
@@ -263,12 +253,6 @@ def create_data_loaders(
         num_workers=num_workers,
         pin_memory=pin_memory
     )
-    
-    print(f"\nData Loaders created:")
-    print(f"  Train: {len(train_loader)} batches ({len(train_dataset)} samples)")
-    print(f"  Val:   {len(val_loader)} batches ({len(val_dataset)} samples)")
-    print(f"  Test:  {len(test_loader)} batches ({len(test_dataset)} samples)")
-    print(f"  Frames per sequence: {train_dataset.n_frames}")
     
     return train_loader, val_loader, test_loader
 

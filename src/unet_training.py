@@ -1,24 +1,20 @@
 import torch
 import torch.nn as nn
 from typing import Tuple
-import matplotlib.pyplot as plt
-import numpy as np
 import marimo as mo 
 
 import os
-import seaborn as sns
 
 from sea_clutter import create_data_loaders  
 from sklearn.metrics import precision_score, recall_score
 
 import models
 
-# ---------------------------
-# 2. Metrics
-# ---------------------------
-class DiceLoss(nn.Module):
-    def __init__(self, smooth=1.):
-        super(DiceLoss, self).__init__()
+class TverskyLoss(nn.Module):
+    def __init__(self, alpha=0.2, beta=0.8, smooth=1.):
+        super(TverskyLoss, self).__init__()
+        self.alpha = alpha
+        self.beta = beta
         self.smooth = smooth
     
     def forward(self, pred, target):
@@ -26,25 +22,29 @@ class DiceLoss(nn.Module):
         pred_flat = pred.view(-1)
         target_flat = target.view(-1)
         
-        intersection = (pred_flat * target_flat).sum()
-        dice = (2. * intersection + self.smooth) / (pred_flat.sum() + target_flat.sum() + self.smooth)
+        # True Positives, False Positives & False Negatives
+        TP = (pred_flat * target_flat).sum()
+        FP = ((1 - target_flat) * pred_flat).sum()
+        FN = (target_flat * (1 - pred_flat)).sum()
         
-        return 1 - dice
+        tversky = (TP + self.smooth) / (TP + self.alpha * FP + self.beta * FN + self.smooth)
+        
+        return 1 - tversky
 
 class CombinedLoss(nn.Module):
-    def __init__(self, bce_weight=1.0, dice_weight=1.0):
+    def __init__(self, bce_weight=0.1, tversky_weight=0.9, alpha=0.2, beta=0.8):
         super(CombinedLoss, self).__init__()
         self.bce_loss = nn.BCEWithLogitsLoss()
-        self.dice_loss = DiceLoss()
+        self.tversky_loss = TverskyLoss(alpha=alpha, beta=beta)
         self.bce_weight = bce_weight
-        self.dice_weight = dice_weight
+        self.tversky_weight = tversky_weight
     
     def forward(self, pred, target):
         # BCE with logits expects raw logits (no sigmoid)
         bce = self.bce_loss(pred, target)
-        # Dice loss applies sigmoid internally
-        dice = self.dice_loss(pred, target)
-        return self.bce_weight * bce + self.dice_weight * dice
+        # Tversky loss applies sigmoid internally
+        tversky = self.tversky_loss(pred, target)
+        return self.bce_weight * bce + self.tversky_weight * tversky
 
 def dice_coeff(pred, target, smooth=1.):
     pred = torch.sigmoid(pred).detach().cpu().numpy() > 0.5
@@ -52,26 +52,22 @@ def dice_coeff(pred, target, smooth=1.):
     intersection = (pred * target).sum()
     return (2. * intersection + smooth) / (pred.sum() + target.sum() + smooth)
 
-def evaluate(model, loader, device) -> Tuple[float, float, float]:
+def evaluate(model, loader, device, criterion):
     model.eval()
-    dice_total, prec_total, recall_total = 0, 0, 0
+    loss_total = 0
     with torch.no_grad():
-        for images, masks, labels in loader:
+        for images, masks, _ in loader:
             images, masks = images.to(device), masks.to(device)
             outputs = model(images)
-            preds = torch.sigmoid(outputs) > 0.5
-
-            dice_total += dice_coeff(outputs, masks)
-            prec_total += precision_score(masks.cpu().numpy().flatten(), preds.cpu().numpy().flatten(), zero_division=0)
-            recall_total += recall_score(masks.cpu().numpy().flatten(), preds.cpu().numpy().flatten(), zero_division=0)
+            loss_total += criterion(outputs, masks).item()
 
     n = len(loader)
-    return dice_total / n, prec_total / n, recall_total / n
+    return loss_total / n
 
 # ---------------------------
 # 3. Training Loop
 # ---------------------------
-def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, batch_size=16, lr=1e-4, pretrained=None, model_save_path='unet_single_frame.pt', bce_weight=1.0, dice_weight=1.0, base_filters=16):
+def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, batch_size=16, lr=1e-4, pretrained=None, model_save_path='unet_single_frame.pt', bce_weight=0.1, tversky_weight=0.9, tversky_alpha= 0.2, tversky_beta=0.8, base_filters=16):
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
 
@@ -86,14 +82,17 @@ def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, b
     if pretrained:
         model.load_state_dict(torch.load(pretrained, map_location=device))
         print(f"Loaded pretrained model from {pretrained}")
-    criterion = CombinedLoss(bce_weight=bce_weight, dice_weight=dice_weight)
+    criterion = CombinedLoss(bce_weight=bce_weight, tversky_weight=tversky_weight)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    
+    # Cosine annealing scheduler
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
 
     # Early stopping variables
-    best_dice = 0.0
+    best_val_loss = float('inf')
     patience_counter = 0
 
-    print(f"Using combined loss: BCE weight={bce_weight}, Dice weight={dice_weight}")
+    print(f"Using combined loss: BCE weight={bce_weight}, Tversky weight={tversky_weight}")
 
     for epoch in mo.status.progress_bar(range(num_epochs)):
         model.train()
@@ -110,17 +109,21 @@ def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, b
             epoch_loss += loss.item()
 
         # Validation after every epoch
-        dice, prec, recall = evaluate(model, val_loader, device)
+        val_loss = evaluate(model, val_loader, device, criterion)
         avg_epoch_loss = epoch_loss / len(train_loader)
+        current_lr = scheduler.get_last_lr()[0]
         if epoch % 5 == 0 or epoch == num_epochs - 1:
-            print(f"Epoch {epoch+1}/{num_epochs} | Loss: {avg_epoch_loss:.4f} | Dice: {dice:.3f} | Precision: {prec:.3f} | Recall: {recall:.3f}")
+            print(f"Epoch {epoch+1}/{num_epochs} | Train Loss: {avg_epoch_loss:.4f} | Val Loss: {val_loss:.4f} | LR: {current_lr:.6f}")
+
+        # Step the scheduler
+        scheduler.step()
 
         # Early stopping logic
-        if dice > best_dice:
-            best_dice = dice
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
             patience_counter = 0
             torch.save(model.state_dict(), model_save_path)
-            print(f"New best validation Dice: {best_dice:.3f}")
+            print(f"New best validation loss: {best_val_loss:.4f}")
         else:
             patience_counter += 1
             print(f"No improvement. Patience: {patience_counter}/{patience}")
@@ -129,7 +132,7 @@ def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, b
             print(f"Early stopping triggered after {epoch+1} epochs")
             break
 
-    print(f"Best model saved to {model_save_path} with Dice score: {best_dice:.3f}")
+    print(f"Best model saved to {model_save_path} with validation loss: {best_val_loss:.4f}")
 
 
 if __name__ == "__main__":
@@ -142,7 +145,7 @@ if __name__ == "__main__":
                         help="Number of input channels of the model")
     parser.add_argument("--pretrained", type=str, default=None,
                         help="Path to pretrained model weights (optional)")
-    parser.add_argument("--epochs", type=int, default=30,
+    parser.add_argument("--epochs", type=int, default=100,
                         help="Number of training epochs")
     parser.add_argument("--lr", type=float, default=1e-4,
                         help="Learning rate")
@@ -150,13 +153,13 @@ if __name__ == "__main__":
                         help="Training batch size")
     parser.add_argument("--patience", type=int, default=10,
                         help="Early stopping patience")
-    parser.add_argument("--model-save-path", type=str, default="pretrained/test_model.pt",
+    parser.add_argument("--model-save-path", type=str, default="pretrained/tversky.pt",
                         help="Where to save the trained model")
-    parser.add_argument("--bce-weight", type=float, default=1.0,
+    parser.add_argument("--bce-weight", type=float, default=0.1,
                         help="Weight for BCE loss in combined loss")
-    parser.add_argument("--dice-weight", type=float, default=1.0,
-                        help="Weight for Dice loss in combined loss")
-    parser.add_argument("--base-filters", type=int, default=16,
+    parser.add_argument("--tversky-weight", type=float, default=0.9,
+                        help="Weight for Tversky loss in combined loss")
+    parser.add_argument("--base-filters", type=int, default=64,
                         help="Number of base filters for U-Net")
 
     args = parser.parse_args()
@@ -171,6 +174,6 @@ if __name__ == "__main__":
         pretrained=args.pretrained,
         model_save_path=args.model_save_path,
         bce_weight=args.bce_weight,
-        dice_weight=args.dice_weight,
+        tversky_weight=args.tversky_weight,
         base_filters=args.base_filters
     )

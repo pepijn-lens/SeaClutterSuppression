@@ -19,8 +19,8 @@ def _():
     import models
     from src.generate_data import simulate_sequence_with_realistic_targets_and_masks
     from src.unet_training import train_model
-    from src.end_to_end_evaluate import comprehensive_evaluation
-    from src.end_to_end_helper import analyze_single_sample
+    from src.evaluate import comprehensive_evaluation
+    from src.helper import analyze_single_sample
 
 
     return (
@@ -51,7 +51,6 @@ def _(mo):
     2. **Dataset Generation** - Generate synthetic sea clutter datasets for training \t
     3. **U-Net Training** - Train deep learning models on the generated data\t
     4. **Model Evaluation** - Evaluate trained models on any dataset with basic performance metrics\t
-    5. **Single Sample Analysis** - Analyze individual samples to understand model predictions and performance\t
     """
     )
     return
@@ -678,7 +677,7 @@ def _(mo):
 
     **Architecture**: Input channels must match the number of frames per sequence from your dataset.  
     **Training**: Balance epochs, batch size, and learning rate for optimal convergence.  
-    **Loss Function**: BCE handles pixel-level accuracy, Dice handles class distribution imbalance.
+    **Loss Function**: BCE handles pixel-level accuracy, Tversky allows asymmetric weighting of False Positives (Alpha) and False Negatives (Beta). Higher Beta emphasizes recall over precision.
     """
     )
     return
@@ -719,9 +718,18 @@ def _(mo, os):
         start=0.0, stop=2.0, value=0.1, step=0.1,
         label="BCE Weight", show_value=True
     )
-    train_dice_weight = mo.ui.slider(
+    train_tversky_weight = mo.ui.slider(
         start=0.0, stop=2.0, value=0.9, step=0.1,
-        label="Dice Weight", show_value=True
+        label="Tversky Weight", show_value=True
+    )
+
+    train_tversky_alpha = mo.ui.slider(
+        start=0.0, stop=1.0, value=0.2, step=0.05,
+        label="Tversky Alpha (FP weight)", show_value=True
+    )
+    train_tversky_beta = mo.ui.slider(
+        start=0.0, stop=1.0, value=0.8, step=0.05,
+        label="Tversky Beta (FN weight)", show_value=True
     )
 
     train_available_datasets = ["Use Generated Dataset (from memory)"] + ["Select dataset..."] + [
@@ -753,7 +761,9 @@ def _(mo, os):
 
         ### **Loss Weights**
         {train_bce_weight}  
-        {train_dice_weight}  
+        {train_tversky_weight}  
+        {train_tversky_alpha}  
+        {train_tversky_beta}  
 
         ### **Dataset & Model**
         {train_dataset_dropdown}  
@@ -767,7 +777,9 @@ def _(mo, os):
         train_learning_rate=train_learning_rate,
         train_patience=train_patience,
         train_bce_weight=train_bce_weight,
-        train_dice_weight=train_dice_weight,
+        train_tversky_weight=train_tversky_weight,
+        train_tversky_alpha=train_tversky_alpha,
+        train_tversky_beta=train_tversky_beta,
         train_dataset_dropdown=train_dataset_dropdown,
         train_model_name=train_model_name
     ).form(
@@ -844,7 +856,9 @@ def _(generated_dataset, mo, os, time, torch, train_config, train_model):
             lr=train_config.value["train_learning_rate"],
             model_save_path=training_model_save_path,
             bce_weight=train_config.value["train_bce_weight"],
-            dice_weight=train_config.value["train_dice_weight"],
+            tversky_weight=train_config.value["train_tversky_weight"],
+            tversky_alpha=train_config.value["train_tversky_alpha"],
+            tversky_beta=train_config.value["train_tversky_beta"],
             base_filters=train_config.value["train_base_filters"]
         )
 
@@ -896,7 +910,8 @@ def _(mo):
 
     **Model Selection**: Choose a trained model from the pretrained folder.  
     **Dataset**: Use either the generated dataset from memory or load a saved dataset.  
-    **Distance Threshold**: Controls how precisely predicted targets must match ground truth locations.
+    **Distance Threshold**: Controls how precisely predicted targets must match ground truth locations.  
+    **Detection Threshold**: Controls the confidence threshold for converting model outputs to binary detections (lower = more sensitive).
     """
     )
     return
@@ -938,6 +953,12 @@ def _(mo, os):
         label="Distance Threshold (pixels)", show_value=True
     )
 
+    eval_detection_threshold = mo.ui.slider(
+        start=0, stop=0.5, value=0.5, step=1e-7,
+        label="Detection Threshold (confidence, 0 = sensitive, 1 = strict)", 
+        show_value=True,
+    )
+
     eval_base_filters = mo.ui.slider(
         start=8, stop=64, value=16, step=8,
         label="Base Filters (match training)", show_value=True
@@ -952,12 +973,14 @@ def _(mo, os):
 
         ### **Evaluation Parameters**
         {eval_distance_threshold}  
+        {eval_detection_threshold}  
         {eval_base_filters}
         """
     ).batch(
         eval_model_dropdown=eval_model_dropdown,
         eval_dataset_dropdown=eval_dataset_dropdown,
         eval_distance_threshold=eval_distance_threshold,
+        eval_detection_threshold=eval_detection_threshold,
         eval_base_filters=eval_base_filters
     ).form(
         submit_button_label="Run Evaluation",
@@ -1019,6 +1042,7 @@ def _(comprehensive_evaluation, eval_config, generated_dataset, mo, os, torch):
         print(f"Model: {evaluation_model_path}")
         print(f"Dataset: {'Generated Dataset (in memory)' if using_generated_dataset_eval else evaluation_dataset_path}")
         print(f"Distance threshold: {eval_config.value['eval_distance_threshold']} pixels")
+        print(f"Detection threshold: {eval_config.value['eval_detection_threshold']}")
 
         # Run evaluation
         evaluation_results = comprehensive_evaluation(
@@ -1026,7 +1050,8 @@ def _(comprehensive_evaluation, eval_config, generated_dataset, mo, os, torch):
             dataset_path=dataset_path_for_evaluation,
             base_filter_size=eval_config.value["eval_base_filters"],
             marimo_var=True,
-            distance_threshold=eval_config.value["eval_distance_threshold"]
+            distance_threshold=eval_config.value["eval_distance_threshold"],
+            threshold=eval_config.value["eval_detection_threshold"]
         )
 
         # Extract results
@@ -1095,7 +1120,8 @@ def _(mo):
     ### Recommended Settings:
     - **Learning Rate**: 1e-4 for most cases\t
     - **Batch Size**: 16-32 depending on memory\t
-    - **Loss Weights**: BCE=1.0, Dice=1.0 for balanced training\t
+    - **Loss Weights**: BCE=0.1, Tversky=0.9, Tversky compensates for the class imbalance (only a few target pixels vs. a lot of background pixels)\t
+    - **Tversky Parameters**: Alpha=0.2 (FP weight), Beta=0.8 (FN weight) - emphasizes recall over precision for target detection\t
     - **Patience**: 10-15 epochs for early stopping
     """
     )
@@ -1154,7 +1180,7 @@ def _(mo):
     If you use this work in your research, please cite the repository.
 
     ---
-    *Last updated: 20th of June 2025 • Version compatible with Marimo 0.13.15+*
+    *Last updated: 30th of June 2025 • Version compatible with Marimo 0.13.15+*
     """
     )
     return

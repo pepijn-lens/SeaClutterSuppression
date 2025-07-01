@@ -92,7 +92,7 @@ def generate_large_dataset(
     import torch
     
     # Dataset configuration
-    n_samples = 25000  # Increased to ensure samples per class
+    n_samples = 10000  # Increased to ensure samples per class
     n_frames = 3
     max_targets = 10
     samples_per_class = max(1, n_samples // (max_targets + 1))  # Ensure at least 1 sample per class
@@ -117,9 +117,9 @@ def generate_large_dataset(
             # Random clutter parameters for this sample
             clutter_params = sea_clutter.ClutterParams(
                 mean_power_db=random.uniform(14.0, 18.0),
-                shape_param=random.uniform(0.3, 0.99),
-                ar_coeff=random.uniform(0.5, 0.99),
-                wave_speed_mps=random.uniform(-6.0, 6.0),
+                shape_param=random.uniform(0.5, 1),
+                ar_coeff=random.uniform(0.8, 0.99),
+                wave_speed_mps=random.uniform(2.0, 6.0),
                 bragg_power_rel=0
             )
             
@@ -128,7 +128,7 @@ def generate_large_dataset(
             if n_targets > 0:
                 for _ in range(n_targets):
                     # Random target power between 10-20 dB for each target
-                    target_power = random.uniform(10.0, 21.0)
+                    target_power = random.uniform(10.0, 20.0)
                     
                     target = sea_clutter.create_realistic_target(
                         target_type, 
@@ -190,9 +190,9 @@ def generate_large_dataset(
             'target_power_range_db': [10.0, 20.0],
             'clutter_param_ranges': {
                 'mean_power_db': [14.0, 18.0],  # Fixed to match actual range used
-                'shape_param': [0.3, 0.99],
-                'ar_coeff': [0.5, 0.99],
-                'wave_speed_mps': [-6.0, 6.0]
+                'shape_param': [0.5, 1.0],
+                'ar_coeff': [0.8, 0.99],
+                'wave_speed_mps': [2.0, 6.0]
             },
             'class_names': [f"{i}_targets" for i in range(max_targets + 1)],
             'data_format': 'dB_scale'
@@ -228,7 +228,7 @@ if __name__ == "__main__":
     os.makedirs(data_dir, exist_ok=True)
     
     # Save dataset
-    save_path = os.path.join(data_dir, "random.pt")
+    save_path = os.path.join(data_dir, "random2.pt")
     print(f"\nSaving dataset to {save_path}...")
     torch.save(dataset, save_path)
     print("Dataset saved successfully!")

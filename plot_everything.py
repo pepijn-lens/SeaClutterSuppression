@@ -423,12 +423,12 @@ def main():
     
     # Load model
     model = UNet(n_channels=3, n_classes=1, base_filters=64)
-    checkpoint = torch.load('pretrained/12SNR_clutter_64.pt', map_location='cpu')
+    checkpoint = torch.load('pretrained/behemoth.pt', map_location='cpu')
     model.load_state_dict(checkpoint)
     model.eval()
     
     # Load dataset
-    dataset = torch.load('data/12SNR_clutter.pt', map_location='cpu')
+    dataset = torch.load('/Users/pepijnlens/Documents/SeaClutterSuppression/local_data/16SNR_clutter.pt', map_location='cpu')
     
     # Get a random sample from the dataset
     import random
@@ -437,7 +437,7 @@ def main():
         # Your dataset has keys: sequences, masks, labels, meta_data
         if 'sequences' in dataset:
             n_samples = len(dataset['sequences'])
-            random_idx = random.randint(0, n_samples - 1)
+            random_idx = 5000
             sample = dataset['sequences'][random_idx]
             mask = dataset['masks'][random_idx] if 'masks' in dataset else None
             label = dataset['labels'][random_idx] if 'labels' in dataset else None
