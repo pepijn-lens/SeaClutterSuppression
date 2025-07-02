@@ -119,49 +119,11 @@ def create_summary_histograms():
     """Create histogram plots comparing performance across different conditions"""
     
     # Create figure with subplots
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
+    fig, ((ax3, ax4)) = plt.subplots(2, figsize=(10, 10))
     
     # Data preparation
     methods = ['CFAR\n(P_FA=1e-4)', 'CFAR\n(P_FA=1e-3)', 'U-Net\n(thresh=1e-1)', 'U-Net\n(thresh=1e-6)']
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
-    
-    # 1. Average Recall across SNR levels (No Clutter)
-    no_clutter_avg_recall = [
-        np.mean([0.032, 0.094, 0.265, 0.576, 0.989, 0.995]),  # CFAR 1e-4
-        np.mean([0.112, 0.237, 0.494, 0.785, 0.991, 0.995]),  # CFAR 1e-3
-        np.mean([0.054, 0.145, 0.381, 0.721, 0.992, 0.992]),  # U-Net 1e-1
-        np.mean([0.112, 0.260, 0.53, 0.799, 0.984, 0.985])    # U-Net 1e-6
-    ]
-    
-    bars1 = ax1.bar(methods, no_clutter_avg_recall, color=colors, alpha=0.8, edgecolor='black', linewidth=1)
-    ax1.set_ylabel('Average Recall', fontsize=12)
-    ax1.set_title('Average Recall (No Sea Clutter)', fontsize=14, fontweight='bold')
-    ax1.set_ylim(0, 1)
-    ax1.grid(True, alpha=0.3, axis='y')
-    
-    # Add value labels on bars
-    for bar, value in zip(bars1, no_clutter_avg_recall):
-        ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02, 
-                f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
-    
-    # 2. Average Recall across SNR levels (With Clutter)
-    with_clutter_avg_recall = [
-        np.mean([0.047, 0.075, 0.191, 0.401, 0.843, 0.940]),  # CFAR 1e-4
-        np.mean([0.106, 0.175, 0.374, 0.603, 0.892, 0.962]),  # CFAR 1e-3
-        np.mean([0.023, 0.073, 0.244, 0.553, 0.924, 0.972]),  # U-Net 1e-1
-        np.mean([0.070, 0.162, 0.382, 0.688, 0.939, 0.976])   # U-Net 1e-6
-    ]
-    
-    bars2 = ax2.bar(methods, with_clutter_avg_recall, color=colors, alpha=0.8, edgecolor='black', linewidth=1)
-    ax2.set_ylabel('Average Recall', fontsize=12)
-    ax2.set_title('Average Recall (With Sea Clutter)', fontsize=14, fontweight='bold')
-    ax2.set_ylim(0, 1)
-    ax2.grid(True, alpha=0.3, axis='y')
-    
-    # Add value labels on bars
-    for bar, value in zip(bars2, with_clutter_avg_recall):
-        ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02, 
-                f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
     
     # 3. False Alarm Rate Comparison (logarithmic scale)
     no_clutter_avg_pfa = [
@@ -185,8 +147,20 @@ def create_summary_histograms():
     bars3b = ax3.bar(x + width/2, with_clutter_avg_pfa, width, label='With Clutter', 
                      color='lightcoral', alpha=0.8, edgecolor='black', linewidth=1)
     
+    # Add value labels on bars
+    for i, (bar_a, bar_b) in enumerate(zip(bars3a, bars3b)):
+        # No clutter values
+        height_a = bar_a.get_height()
+        ax3.text(bar_a.get_x() + bar_a.get_width()/2., height_a,
+                f'{height_a:.1e}', ha='center', va='bottom', fontsize=9, rotation=45)
+        
+        # With clutter values
+        height_b = bar_b.get_height()
+        ax3.text(bar_b.get_x() + bar_b.get_width()/2., height_b,
+                f'{height_b:.1e}', ha='center', va='bottom', fontsize=9, rotation=45)
+    
     ax3.set_ylabel('False Alarm Rate (log scale)', fontsize=12)
-    ax3.set_title('False Alarm Rate Comparison', fontsize=14, fontweight='bold')
+    ax3.set_title('False Alarm Rate Comparison', fontsize=14, fontweight='bold', pad=30)
     ax3.set_yscale('log')
     ax3.set_xticks(x)
     ax3.set_xticklabels(methods)
@@ -201,14 +175,17 @@ def create_summary_histograms():
     scatter = ax4.scatter(random_pfa, random_recall, c=colors, s=200, alpha=0.8, 
                          edgecolors='black', linewidth=2)
     
-    # Add method labels
+    # Add method labels with values
     for i, method in enumerate(['CFAR (1e-4)', 'CFAR (1e-3)', 'U-Net (1e-1)', 'U-Net (1e-6)']):
-        ax4.annotate(method, (random_pfa[i], random_recall[i]), 
-                    xytext=(10, 10), textcoords='offset points', fontsize=10)
+        ax4.annotate(f'{method}\n({random_pfa[i]:.1e}, {random_recall[i]:.3f})', 
+                    (random_pfa[i], random_recall[i]), 
+                    xytext=(10, 10), textcoords='offset points', fontsize=9,
+                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7))
     
     ax4.set_xlabel('False Alarm Rate (log scale)', fontsize=12)
     ax4.set_ylabel('Recall', fontsize=12)
-    ax4.set_title('Random Sea Clutter: Recall vs False Alarm Rate', fontsize=14, fontweight='bold')
+    ax4.set_xlim(1e-5, 1e-2)
+    ax4.set_title('Random Sea Clutter: Recall vs False Alarm Rate', fontsize=14, fontweight='bold', pad=20)
     ax4.set_xscale('log')
     ax4.grid(True, alpha=0.3)
     ax4.set_ylim(0.6, 0.85)

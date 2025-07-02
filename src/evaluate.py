@@ -18,6 +18,9 @@ def comprehensive_evaluation(dataset_path, model_path, base_filter_size, save=No
     _, val_loader, test_loader = create_data_loaders(
         dataset_path=dataset_path,
         batch_size=16,
+        train_ratio=0.01,
+        val_ratio=0.01,
+        test_ratio=0.98
     )
     
     # Use test loader for evaluation
