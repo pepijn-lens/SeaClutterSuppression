@@ -37,7 +37,7 @@ def plot_final_results():
         'UNet_1e-1_recall': [0.023, 0.073, 0.244, 0.553, 0.924, 0.972],
         'UNet_1e-1_pfa': [7.8e-5, 7.8e-5, 8.3e-5, 8.4e-5, 8.6e-5, 9.4e-5],
         'UNet_1e-6_recall': [0.070, 0.162, 0.382, 0.688, 0.939, 0.976],
-        'UNet_1e-6_pfa': [6.2e-4, 6.2e-4, 6.2e-4, 6.1e-4, 1.2e-5, 7e-4]
+        'UNet_1e-6_pfa': [6.2e-4, 6.2e-4, 6.2e-4, 6.1e-4, 6.4e-4, 7e-4]
     }
     
     # Data for random sea clutter configurations
@@ -115,85 +115,106 @@ def plot_final_results():
                 dpi=300, bbox_inches='tight')
     plt.show()
 
-def create_summary_table():
-    """Create a summary table of all results"""
+def create_summary_histograms():
+    """Create histogram plots comparing performance across different conditions"""
     
-    # Create comprehensive summary table
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 10))
+    # Create figure with subplots
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
     
-    # Table 1: No Sea Clutter
-    no_clutter_table_data = [
-        ['SNR (dB)', 'CFAR (P_FA=1e-4)', 'CFAR (P_FA=1e-3)', 'U-Net (thresh=1e-1)', 'U-Net (thresh=1e-6)'],
-        ['', 'Recall | P_FA', 'Recall | P_FA', 'Recall | P_FA', 'Recall | P_FA'],
-        ['6', '0.032 | 1.3e-4', '0.112 | 1.1e-3', '0.054 | 1.9e-4', '0.112 | 7.4e-4'],
-        ['8', '0.094 | 1.3e-4', '0.237 | 1.1e-3', '0.145 | 1.9e-4', '0.260 | 7.5e-4'],
-        ['10', '0.265 | 1.3e-4', '0.494 | 1.1e-3', '0.381 | 1.9e-4', '0.530 | 7.2e-4'],
-        ['12', '0.576 | 1.3e-4', '0.785 | 1.0e-3', '0.721 | 2.0e-4', '0.799 | 7.4e-4'],
-        ['16', '0.989 | 1.0e-4', '0.991 | 1.0e-3', '0.992 | 2.0e-4', '0.984 | 7.9e-4'],
-        ['20', '0.995 | 1.0e-4', '0.995 | 1.0e-3', '0.992 | 2.4e-4', '0.985 | 9.3e-4']
+    # Data preparation
+    methods = ['CFAR\n(P_FA=1e-4)', 'CFAR\n(P_FA=1e-3)', 'U-Net\n(thresh=1e-1)', 'U-Net\n(thresh=1e-6)']
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+    
+    # 1. Average Recall across SNR levels (No Clutter)
+    no_clutter_avg_recall = [
+        np.mean([0.032, 0.094, 0.265, 0.576, 0.989, 0.995]),  # CFAR 1e-4
+        np.mean([0.112, 0.237, 0.494, 0.785, 0.991, 0.995]),  # CFAR 1e-3
+        np.mean([0.054, 0.145, 0.381, 0.721, 0.992, 0.992]),  # U-Net 1e-1
+        np.mean([0.112, 0.260, 0.53, 0.799, 0.984, 0.985])    # U-Net 1e-6
     ]
     
-    ax1.axis('tight')
-    ax1.axis('off')
-    table1 = ax1.table(cellText=no_clutter_table_data, cellLoc='center', loc='center',
-                      colWidths=[0.15, 0.2, 0.2, 0.2, 0.2])
-    table1.auto_set_font_size(False)
-    table1.set_fontsize(10)
-    table1.scale(1, 2)
-    ax1.set_title('Performance Results - No Sea Clutter', fontsize=14, fontweight='bold', pad=20)
+    bars1 = ax1.bar(methods, no_clutter_avg_recall, color=colors, alpha=0.8, edgecolor='black', linewidth=1)
+    ax1.set_ylabel('Average Recall', fontsize=12)
+    ax1.set_title('Average Recall (No Sea Clutter)', fontsize=14, fontweight='bold')
+    ax1.set_ylim(0, 1)
+    ax1.grid(True, alpha=0.3, axis='y')
     
-    # Color header rows
-    for i in range(5):
-        table1[(0, i)].set_facecolor('#4CAF50')
-        table1[(1, i)].set_facecolor('#E8F5E8')
+    # Add value labels on bars
+    for bar, value in zip(bars1, no_clutter_avg_recall):
+        ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02, 
+                f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
     
-    # Table 2: With Sea Clutter
-    with_clutter_table_data = [
-        ['SNR (dB)', 'CFAR (P_FA=1e-4)', 'CFAR (P_FA=1e-3)', 'U-Net (thresh=1e-1)', 'U-Net (thresh=1e-6)'],
-        ['', 'Recall | P_FA', 'Recall | P_FA', 'Recall | P_FA', 'Recall | P_FA'],
-        ['6', '0.047 | 1.6e-3', '0.106 | 3.4e-3', '0.023 | 7.8e-5', '0.070 | 6.2e-4'],
-        ['8', '0.075 | 1.6e-3', '0.175 | 3.4e-3', '0.073 | 7.8e-5', '0.162 | 6.2e-4'],
-        ['10', '0.191 | 1.6e-3', '0.374 | 3.4e-3', '0.244 | 8.3e-5', '0.382 | 6.2e-4'],
-        ['12', '0.401 | 1.6e-3', '0.603 | 3.4e-3', '0.553 | 8.4e-5', '0.688 | 6.1e-4'],
-        ['16', '0.843 | 1.6e-3', '0.892 | 3.4e-3', '0.924 | 8.6e-5', '0.939 | 1.2e-5'],
-        ['20', '0.940 | 1.6e-3', '0.962 | 3.4e-3', '0.972 | 9.4e-5', '0.976 | 7.0e-4']
+    # 2. Average Recall across SNR levels (With Clutter)
+    with_clutter_avg_recall = [
+        np.mean([0.047, 0.075, 0.191, 0.401, 0.843, 0.940]),  # CFAR 1e-4
+        np.mean([0.106, 0.175, 0.374, 0.603, 0.892, 0.962]),  # CFAR 1e-3
+        np.mean([0.023, 0.073, 0.244, 0.553, 0.924, 0.972]),  # U-Net 1e-1
+        np.mean([0.070, 0.162, 0.382, 0.688, 0.939, 0.976])   # U-Net 1e-6
     ]
     
-    ax2.axis('tight')
-    ax2.axis('off')
-    table2 = ax2.table(cellText=with_clutter_table_data, cellLoc='center', loc='center',
-                      colWidths=[0.15, 0.2, 0.2, 0.2, 0.2])
-    table2.auto_set_font_size(False)
-    table2.set_fontsize(10)
-    table2.scale(1, 2)
-    ax2.set_title('Performance Results - With Sea Clutter', fontsize=14, fontweight='bold', pad=20)
+    bars2 = ax2.bar(methods, with_clutter_avg_recall, color=colors, alpha=0.8, edgecolor='black', linewidth=1)
+    ax2.set_ylabel('Average Recall', fontsize=12)
+    ax2.set_title('Average Recall (With Sea Clutter)', fontsize=14, fontweight='bold')
+    ax2.set_ylim(0, 1)
+    ax2.grid(True, alpha=0.3, axis='y')
     
-    # Color header rows
-    for i in range(5):
-        table2[(0, i)].set_facecolor('#FF9800')
-        table2[(1, i)].set_facecolor('#FFF3E0')
+    # Add value labels on bars
+    for bar, value in zip(bars2, with_clutter_avg_recall):
+        ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02, 
+                f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
     
-    # Table 3: Random Sea Clutter
-    random_table_data = [
-        ['Method', 'CFAR (P_FA=1e-4)', 'CFAR (P_FA=1e-3)', 'U-Net (thresh=1e-1)', 'U-Net (thresh=1e-6)'],
-        ['Recall | P_FA', '0.684 | 1.7e-3', '0.778 | 3.5e-3', '0.771 | 9.4e-5', '0.828 | 6.5e-4']
+    # 3. False Alarm Rate Comparison (logarithmic scale)
+    no_clutter_avg_pfa = [
+        np.mean([1.3e-4, 1.3e-4, 1.3e-4, 1.3e-4, 1e-4, 1e-4]),      # CFAR 1e-4
+        np.mean([1.1e-3, 1.1e-3, 1.1e-3, 1e-3, 1e-3, 1e-3]),        # CFAR 1e-3
+        np.mean([1.9e-4, 1.9e-4, 1.9e-4, 2e-4, 2e-4, 2.4e-4]),      # U-Net 1e-1
+        np.mean([7.4e-4, 7.5e-4, 7.2e-4, 7.4e-4, 7.9e-4, 9.3e-4])   # U-Net 1e-6
     ]
+    with_clutter_avg_pfa = [
+        np.mean([1.6e-3, 1.6e-3, 1.6e-3, 1.6e-3, 1.6e-3, 1.6e-3]),  # CFAR 1e-4
+        np.mean([3.4e-3, 3.4e-3, 3.4e-3, 3.4e-3, 3.4e-3, 3.4e-3]),  # CFAR 1e-3
+        np.mean([7.8e-5, 7.8e-5, 8.3e-5, 8.4e-5, 8.6e-5, 9.4e-5]),  # U-Net 1e-1
+        np.mean([6.2e-4, 6.2e-4, 6.2e-4, 6.1e-4, 6.4e-4, 7e-4])     # U-Net 1e-6
+    ]
+
+    x = np.arange(len(methods))
+    width = 0.35
     
-    ax3.axis('tight')
-    ax3.axis('off')
-    table3 = ax3.table(cellText=random_table_data, cellLoc='center', loc='center',
-                      colWidths=[0.2, 0.2, 0.2, 0.2, 0.2])
-    table3.auto_set_font_size(False)
-    table3.set_fontsize(10)
-    table3.scale(1, 2)
-    ax3.set_title('Performance Results - Random Sea Clutter Configurations', fontsize=14, fontweight='bold', pad=20)
+    bars3a = ax3.bar(x - width/2, no_clutter_avg_pfa, width, label='No Clutter', 
+                     color='lightblue', alpha=0.8, edgecolor='black', linewidth=1)
+    bars3b = ax3.bar(x + width/2, with_clutter_avg_pfa, width, label='With Clutter', 
+                     color='lightcoral', alpha=0.8, edgecolor='black', linewidth=1)
     
-    # Color header row
-    for i in range(5):
-        table3[(0, i)].set_facecolor('#2196F3')
+    ax3.set_ylabel('False Alarm Rate (log scale)', fontsize=12)
+    ax3.set_title('False Alarm Rate Comparison', fontsize=14, fontweight='bold')
+    ax3.set_yscale('log')
+    ax3.set_xticks(x)
+    ax3.set_xticklabels(methods)
+    ax3.legend()
+    ax3.grid(True, alpha=0.3, axis='y')
+    
+    # 4. Random Sea Clutter Performance
+    random_recall = [0.684, 0.778, 0.771, 0.828]
+    random_pfa = [1.7e-3, 3.5e-3, 9.4e-5, 6.5e-4]
+    
+    # Create scatter plot with recall vs PFA
+    scatter = ax4.scatter(random_pfa, random_recall, c=colors, s=200, alpha=0.8, 
+                         edgecolors='black', linewidth=2)
+    
+    # Add method labels
+    for i, method in enumerate(['CFAR (1e-4)', 'CFAR (1e-3)', 'U-Net (1e-1)', 'U-Net (1e-6)']):
+        ax4.annotate(method, (random_pfa[i], random_recall[i]), 
+                    xytext=(10, 10), textcoords='offset points', fontsize=10)
+    
+    ax4.set_xlabel('False Alarm Rate (log scale)', fontsize=12)
+    ax4.set_ylabel('Recall', fontsize=12)
+    ax4.set_title('Random Sea Clutter: Recall vs False Alarm Rate', fontsize=14, fontweight='bold')
+    ax4.set_xscale('log')
+    ax4.grid(True, alpha=0.3)
+    ax4.set_ylim(0.6, 0.85)
     
     plt.tight_layout()
-    plt.savefig('/Users/pepijnlens/Documents/SeaClutterSuppression/evaluation_results/results_summary_table.png', 
+    plt.savefig('/Users/pepijnlens/Documents/SeaClutterSuppression/evaluation_results/performance_histograms.png', 
                 dpi=300, bbox_inches='tight')
     plt.show()
 
@@ -202,8 +223,8 @@ if __name__ == "__main__":
     plot_final_results()
     print("Recall vs SNR plots saved to evaluation_results/recall_vs_snr_results.png")
     
-    print("\nGenerating summary table...")
-    create_summary_table()
-    print("Summary table saved to evaluation_results/results_summary_table.png")
+    print("\nGenerating performance histograms...")
+    create_summary_histograms()
+    print("Performance histograms saved to evaluation_results/performance_histograms.png")
     
     print("\nAll plots generated successfully!")

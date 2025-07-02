@@ -402,12 +402,12 @@ if __name__ == "__main__":
     num_doppler_bins = 128
 
     # CFAR parameters
-    pfa_values = [1e-4, 1e-3]  # Different false alarm probabilities
+    pfa_values = [1e-3]  # Different false alarm probabilities
     guard_cells = 1
     training_cells = 4
 
     # Dataset parameters
-    dataset_path = '/Users/pepijnlens/Documents/SeaClutterSuppression/data/6SNR_clutter.pt'
+    dataset_path = '/Users/pepijnlens/Documents/SeaClutterSuppression/local_data/12SNR_clutter.pt'
     distance_threshold = 1.5  # Maximum distance for spatial target matching (pixels)
 
     # Load dataset using the specified function

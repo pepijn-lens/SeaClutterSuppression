@@ -289,8 +289,7 @@ def spatial_target_matching(predicted_centroids, ground_truth_centroids, distanc
     # Calculate distance matrix between all predicted and ground truth points
     distance_matrix = cdist(pred_array, gt_array, metric='euclidean')
     
-    # Find optimal matching using Hungarian algorithm approximation
-    # For simplicity, we'll use a greedy approach
+    # Find optimal matching using a greedy approach, ensuring one-to-one matching
     matches = []
     matched_pred_indices = set()
     matched_gt_indices = set()
@@ -303,7 +302,7 @@ def spatial_target_matching(predicted_centroids, ground_truth_centroids, distanc
             if distance_matrix[i, j] <= distance_threshold:
                 potential_matches.append((distance_matrix[i, j], i, j))
     
-    # Sort by distance and greedily assign matches
+    # Sort by distance and greedily assign matches, removing matched GTs
     potential_matches.sort(key=lambda x: x[0])
     
     for distance, pred_idx, gt_idx in potential_matches:
@@ -312,6 +311,7 @@ def spatial_target_matching(predicted_centroids, ground_truth_centroids, distanc
             matched_pred_indices.add(pred_idx)
             matched_gt_indices.add(gt_idx)
             matched_distances.append(distance)
+            # Once a GT is matched, it cannot be matched again (enforced by matched_gt_indices)
     
     # Calculate metrics
     true_positives = len(matches)
