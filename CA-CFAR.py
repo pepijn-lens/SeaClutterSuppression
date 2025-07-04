@@ -176,7 +176,7 @@ def visualize_cfar_sample_results(rd_map, mask, gt_centroids, results_for_sample
         axes = [axes]
     
     # First column: Ground Truth
-    im = axes[0].imshow(rd_map, cmap='viridis', vmin=0, vmax=50)
+    im = axes[0].imshow(rd_map, cmap='viridis', vmin=0, vmax=40)
     fig.colorbar(im, ax=axes[0], fraction=0.046, pad=0.04)
     
     axes[0].set_title(f'Input RD Map')
@@ -192,14 +192,14 @@ def visualize_cfar_sample_results(rd_map, mask, gt_centroids, results_for_sample
         predicted_count = result['predicted_count']
         
         # Spatial matching visualization
-        axes[col_idx].imshow(rd_map, cmap='viridis', vmin=0, vmax=50)
+        axes[col_idx].imshow(rd_map, cmap='viridis', vmin=0, vmax=40)
         
         legend_handles = []
         if gt_centroids and detection_clusters:
             # Plot all ground truth (yellow circles)
             gt_x, gt_y = zip(*gt_centroids)
             scatter_gt = axes[col_idx].scatter(gt_x, gt_y, c='yellow', s=50, marker='o', 
-                                                linewidths=2, label='Ground Truth', alpha=0.7)
+                                                linewidths=2, label='Ground Truth')
             legend_handles.append(scatter_gt)
             
             # Plot predictions with different colors based on matching
@@ -225,7 +225,7 @@ def visualize_cfar_sample_results(rd_map, mask, gt_centroids, results_for_sample
             for pred_idx, gt_idx in matching_result['matches']:
                 pred_x, pred_y = detection_clusters[pred_idx]
                 gt_x, gt_y = gt_centroids[gt_idx]
-                axes[col_idx].plot([pred_x, gt_x], [pred_y, gt_y], 'g--', alpha=0.7, linewidth=2)
+                axes[col_idx].plot([pred_x, gt_x], [pred_y, gt_y], 'g--', linewidth=2)
             
             # Calculate metrics for title
             tp = matching_result['true_positives']
@@ -250,7 +250,7 @@ def visualize_cfar_sample_results(rd_map, mask, gt_centroids, results_for_sample
         axes[col_idx].set_xlabel('Doppler Bin')
         axes[col_idx].set_ylabel('Range Bin')
         if legend_handles:
-            axes[col_idx].legend()
+            axes[col_idx].legend(loc='upper right', fontsize='small', markerscale=0.7, frameon=True)
     
     plt.tight_layout()
     plt.show()
@@ -402,7 +402,7 @@ if __name__ == "__main__":
     num_doppler_bins = 128
 
     # CFAR parameters
-    pfa_values = [1e-3]  # Different false alarm probabilities
+    pfa_values = [1e-2]  # Different false alarm probabilities
     guard_cells = 1
     training_cells = 4
 
@@ -422,7 +422,7 @@ if __name__ == "__main__":
     print(f"Test dataset loaded: {len(test_loader)} samples")
 
     # Add option for single sample analysis
-    ANALYZE_SAMPLE = False  # Set to True to analyze just one sample in detail
+    ANALYZE_SAMPLE = True  # Set to True to analyze just one sample in detail
 
     if ANALYZE_SAMPLE:
         print("="*60)

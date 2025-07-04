@@ -102,7 +102,8 @@ def analyze_single_sample(model, dataset, sample_idx, distance_threshold=5.0, ma
 def visualize_sample_results(image, mask, pred_centroids, sample_idx, gt_count, predicted_count, 
                            gt_centroids=None, matching_result=None, marimo_var=False):
     """
-    Create a visualization of the sample results including spatial matching
+    Create a visualization of the sample results including spatial matching.
+    Adds Doppler bins (x-axis) and Range bins (y-axis) labels to all subplots.
     """
     fig, axes = plt.subplots(1, 4, figsize=(20, 5))
     
@@ -112,68 +113,62 @@ def visualize_sample_results(image, mask, pred_centroids, sample_idx, gt_count, 
     else:
         input_display = image.cpu().numpy() if torch.is_tensor(image) else image
     
-    axes[0].imshow(input_display, cmap='viridis')
+    axes[0].imshow(input_display, cmap='viridis', vmin=-3.5, vmax=3)
     axes[0].set_title(f'Input Range-Doppler Map\nSample {sample_idx}')
-    axes[0].axis('off')
+    axes[0].set_xlabel('Doppler bins')
+    axes[0].set_ylabel('Range bins')
+    axes[0].axis('on')
     
     # Ground truth mask
     gt_display = mask.cpu().numpy() if torch.is_tensor(mask) else mask
     if len(gt_display.shape) > 1:
         gt_display = gt_display[-1]  # Take last channel if multi-channel
     
-    axes[1].imshow(gt_display, cmap='hot', alpha=0.8)
-    axes[1].imshow(input_display, cmap='viridis', alpha=0.3)
+    axes[1].imshow(gt_display, cmap='hot')
+    axes[1].imshow(input_display, cmap='viridis', vmin=-3.5, vmax=3)
     
     # Plot ground truth centroids if available
     legend_handles = []
     if gt_centroids:
         gt_x, gt_y = zip(*gt_centroids) if gt_centroids else ([], [])
-        scatter_gt = axes[1].scatter(gt_x, gt_y, c='yellow', s=150, marker='o', 
-                       linewidths=2, edgecolors='black', label='GT Centroids')
+        scatter_gt = axes[1].scatter(gt_x, gt_y, c='yellow', s=50, marker='o', 
+                       linewidths=2, label='Ground Truth')
         legend_handles.append(scatter_gt)
-        
-        # Add labels for GT targets
-        for i, (x, y) in enumerate(gt_centroids):
-            axes[1].annotate(f'GT{i+1}', xy=(x, y), xytext=(x+3, y-3),
-                           fontsize=8, fontweight='bold', color='yellow',
-                           ha='center', va='center')
     
     axes[1].set_title(f'Ground Truth Overlay\n{gt_count} targets')
+    axes[1].set_xlabel('Doppler bins')
+    axes[1].set_ylabel('Range bins')
     if legend_handles:
-        axes[1].legend()
-    axes[1].axis('off')
+        axes[1].legend(loc='upper right', fontsize='small', markerscale=0.7, frameon=True)
+    axes[1].axis('on')
     
     # Predictions overlay
-    axes[2].imshow(input_display, cmap='viridis', alpha=0.5)
+    axes[2].imshow(input_display, cmap='viridis', vmin=-3.5, vmax=3)
     
     # Plot predicted centroids
     legend_handles = []
     if pred_centroids:
         pred_x, pred_y = zip(*pred_centroids)
-        scatter_pred = axes[2].scatter(pred_x, pred_y, c='red', s=100, marker='x', 
+        scatter_pred = axes[2].scatter(pred_x, pred_y, c='red', s=40, marker='x', 
                        linewidths=3, label='Predicted')
         legend_handles.append(scatter_pred)
-        
-        # Add labels for each predicted target
-        for i, (x, y) in enumerate(pred_centroids):
-            axes[2].annotate(f'P{i+1}', xy=(x, y), xytext=(x+2, y-2),
-                           fontsize=8, fontweight='bold', color='white',
-                           ha='center', va='center')
     
     axes[2].set_title(f'Predictions Overlay\n{predicted_count} targets (Count Error: {abs(predicted_count - gt_count)})')
+    axes[2].set_xlabel('Doppler bins')
+    axes[2].set_ylabel('Range bins')
     if legend_handles:
-        axes[2].legend()
-    axes[2].axis('off')
+        axes[2].legend(loc='upper right', fontsize='small', markerscale=0.7, frameon=True)
+    axes[2].axis('on')
     
     # Spatial matching visualization
-    axes[3].imshow(input_display, cmap='viridis', alpha=0.4)
+    axes[3].imshow(input_display, cmap='viridis', vmin=-3.5, vmax=3)
     
     legend_handles = []
     if gt_centroids and pred_centroids and matching_result:
         # Plot all ground truth (yellow circles)
         gt_x, gt_y = zip(*gt_centroids)
-        scatter_gt = axes[3].scatter(gt_x, gt_y, c='yellow', s=150, marker='o', 
-                       linewidths=2, label='Ground Truth', alpha=0.7)
+        scatter_gt = axes[3].scatter(gt_x, gt_y, c='yellow', s=50, marker='o', 
+                       linewidths=2, label='Ground Truth')
         legend_handles.append(scatter_gt)
         
         # Plot all predictions with different colors based on matching
@@ -183,16 +178,16 @@ def visualize_sample_results(image, mask, pred_centroids, sample_idx, gt_count, 
         tp_coords = [pred_centroids[i] for i in matched_pred_indices]
         if tp_coords:
             tp_x, tp_y = zip(*tp_coords)
-            scatter_tp = axes[3].scatter(tp_x, tp_y, c='green', s=100, marker='x', 
-                           linewidths=3, label='True Positives')
+            scatter_tp = axes[3].scatter(tp_x, tp_y, c='green', s=40, marker='x', 
+                           linewidths=2, label='True Positives')
             legend_handles.append(scatter_tp)
         
         # False positives (red)
         fp_coords = [pred_centroids[i] for i in range(len(pred_centroids)) if i not in matched_pred_indices]
         if fp_coords:
             fp_x, fp_y = zip(*fp_coords)
-            scatter_fp = axes[3].scatter(fp_x, fp_y, c='red', s=100, marker='x', 
-                           linewidths=3, label='False Positives')
+            scatter_fp = axes[3].scatter(fp_x, fp_y, c='red', s=40, marker='x', 
+                           linewidths=2, label='False Positives')
             legend_handles.append(scatter_fp)
         
         # Draw lines connecting matches
@@ -210,20 +205,22 @@ def visualize_sample_results(image, mask, pred_centroids, sample_idx, gt_count, 
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
         f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
         
-        title = f'Spatial Matching\nTP:{tp} FP:{fp} FN:{fn}\nF1: {f1:.3f}'
+        title = f'TP:{tp} FP:{fp} FN:{fn}\nF1: {f1:.3f}'
     else:
         # Fallback: just show predictions
         if pred_centroids:
             pred_x, pred_y = zip(*pred_centroids)
-            scatter_pred = axes[3].scatter(pred_x, pred_y, c='red', s=100, marker='x', 
-                           linewidths=3, label='Predicted')
+            scatter_pred = axes[3].scatter(pred_x, pred_y, c='red', s=40, marker='x', 
+                           linewidths=2, label='Predicted')
             legend_handles.append(scatter_pred)
         title = 'Predictions\n(No spatial matching available)'
     
     axes[3].set_title(title)
+    axes[3].set_xlabel('Doppler bins')
+    axes[3].set_ylabel('Range bins')
     if legend_handles:
-        axes[3].legend()
-    axes[3].axis('off')
+        axes[3].legend(loc='upper right', fontsize='small', markerscale=0.7, frameon=True)
+    axes[3].axis('on')
     
     plt.tight_layout()
     if marimo_var:
@@ -396,7 +393,7 @@ def evaluate_spatial_performance(model, data_loader, distance_threshold=5.0, dat
     
     with torch.no_grad():
         for batch_idx, batch_data in enumerate(data_loader):
-            if batch_idx % 10 == 0:
+            if batch_idx % 75 == 0:
                 print(f"Processing batch {batch_idx+1}/{len(data_loader)}...")
             
             # Handle different batch formats

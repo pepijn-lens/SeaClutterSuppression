@@ -8,6 +8,58 @@ import pandas as pd
 plt.style.use('seaborn-v0_8-whitegrid')
 sns.set_palette("husl")
 
+# Example ROC data for SNR=12dB: keys are thresholds, values are (P_d, P_fa) tuples
+roc_12SNR_no_clutter = {
+"UNet":{0.00000000001: {'P_d': 0.721, 'P_fa': 0.00999556},
+    0.0000001: {'P_d': 0.813, 'P_fa': 0.00120916},
+    0.9999: {'P_d': 0.625, 'P_fa': 0.00009529},
+    0.99999997: {'P_d': 0.405, 'P_fa': 0.00003344},},
+"CFAR": {
+    1e-02: {'P_d': 0.928, 'P_fa': 0.00893015},
+    1e-03: {'P_d': 0.785, 'P_fa': 0.00108902},
+    1e-04: {'P_d': 0.576, 'P_fa': 0.00012947},
+    1e-05: {'P_d': 0.367, 'P_fa': 0.00001642},} 
+}
+
+roc_12SNR_clutter = {
+"UNet":{0.000000000001: {'P_d': 0.721, 'P_fa': 0.00972412},
+    0.0000001: {'P_d': 0.720, 'P_fa': 0.00111358},
+    0.01: {'P_d': 0.579, 'P_fa': 0.00010461},
+    0.99999997: {'P_d': 0.279, 'P_fa': 0.00001243},},
+"CFAR": {
+    1e-01: {'P_d': 0.872, 'P_fa': 0.05539847},
+    1e-02: {'P_d': 0.786, 'P_fa': 0.01158995},
+    1e-03: {'P_d': 0.603, 'P_fa': 0.00335479},
+    1e-04: {'P_d': 0.401, 'P_fa': 0.001581},
+    1e-05: {'P_d': 0.243, 'P_fa': 0.0009719},} 
+}
+
+def plot_roc_12snr(roc_data):
+    """
+    Plot ROC curves for SNR=12dB for both UNet and CFAR.
+    """
+    plt.figure(figsize=(7, 5))
+    for method, points in roc_data.items():
+        pf = [v['P_fa'] for k, v in sorted(points.items())]
+        pd = [v['P_d'] for k, v in sorted(points.items())]
+        plt.plot(pf, pd, marker='o', label=method)
+        # Annotate thresholds
+        for (k, v) in points.items():
+            plt.annotate(f'{k:.0e}', (v['P_fa'], v['P_d']), textcoords="offset points", xytext=(5,5), fontsize=8)
+    plt.xscale('log')
+    plt.xlabel('False Alarm Rate (P_FA)')
+    plt.ylabel('Detection Probability (P_D)')
+    plt.title('ROC Curve at SNR=12dB')
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+# Uncomment to plot when running this file
+plot_roc_12snr(roc_12SNR_clutter)
+
+
+
 def plot_final_results():
     """
     Create recall vs SNR plots comparing CFAR and U-Net performance

@@ -11,15 +11,15 @@ class ClusteringModule:
         self.min_area = min_area
         self.eps = eps
         self.min_samples = min_samples
-    
+
     def extract_centroids(self, binary_map, threshold=0.000001):
         """
         Extract centroids from binary map using connected components and DBSCAN
-        
+
         Args:
             binary_map: numpy array or torch tensor of shape (H, W) with values in [0, 1]
             threshold: threshold for binarization
-            
+
         Returns:
             centroids: list of (x, y) coordinates
         """
@@ -69,11 +69,11 @@ class ClusteringModule:
 
 class EndToEndTargetDetector(nn.Module):
     """End-to-end model: Range-Doppler map -> Binary segmentation -> Target centroids"""
-    def __init__(self, unet_weights_path=None, clustering_params=None, n_channels=3, base_filter_size=64, threshold=0.00001):
+    def __init__(self, unet_weights_path=None, clustering_params=None, n_channels=3, base_filter_size=64, threshold=0.001):  # Updated with clean dataset threshold
         super(EndToEndTargetDetector, self).__init__()
         
         # Initialize U-Net with your architecture
-        self.unet = UNet(n_channels=n_channels, n_classes=1, base_filters=base_filter_size)  # Changed to n_classes=1 for segmentation
+        self.unet = UNet(n_channels=n_channels, n_classes=1, base_filters=base_filter_size)
         
         # Load pre-trained weights if provided
         if unet_weights_path:
@@ -83,7 +83,7 @@ class EndToEndTargetDetector(nn.Module):
         self.device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
         self.to(self.device)
         
-        # Store threshold for U-Net confidence map
+        # Store threshold for U-Net confidence map (use calculated thresholds)
         self.threshold = threshold
         
         # Initialize clustering module
@@ -103,10 +103,12 @@ class EndToEndTargetDetector(nn.Module):
         # Ensure input is on the correct device
         if range_doppler_map.device != self.device:
             range_doppler_map = range_doppler_map.to(self.device)
+
+        binary_map = self.unet(range_doppler_map)
         
         # Get binary segmentation from U-Net (keep on MPS)
-        binary_maps = torch.sigmoid(self.unet(range_doppler_map))  # Shape: (B, 1, 128, 128)
-        
+        binary_maps = torch.sigmoid(binary_map)  # Shape: (B, 1, 128, 128)
+
         # Only convert to CPU/NumPy for clustering operations
         batch_centroids = []
         
