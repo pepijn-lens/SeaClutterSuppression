@@ -397,7 +397,7 @@ def _(mo):
     # Configure dataset generation parameters using the simulation settings from Section 1
     # More samples per class improve model generalization; more frames capture temporal patterns
     dataset_samples_per_class = mo.ui.slider(
-        start=100, stop=2000, value=500, step=50,
+        start=100, stop=10000, value=500, step=50,
         label="Samples per Class", show_value=True
     )
     dataset_max_targets = mo.ui.slider(
@@ -714,15 +714,6 @@ def _(mo, os):
         label="Early Stopping Patience", show_value=True
     )
 
-    train_bce_weight = mo.ui.slider(
-        start=0.0, stop=2.0, value=0.1, step=0.1,
-        label="BCE Weight", show_value=True
-    )
-    train_tversky_weight = mo.ui.slider(
-        start=0.0, stop=2.0, value=0.9, step=0.1,
-        label="Tversky Weight", show_value=True
-    )
-
     train_tversky_alpha = mo.ui.slider(
         start=0.0, stop=1.0, value=0.2, step=0.05,
         label="Tversky Alpha (FP weight)", show_value=True
@@ -759,9 +750,7 @@ def _(mo, os):
         {train_learning_rate}  
         {train_patience}  
 
-        ### **Loss Weights**
-        {train_bce_weight}  
-        {train_tversky_weight}  
+        ### **Loss Weights** 
         {train_tversky_alpha}  
         {train_tversky_beta}  
 
@@ -776,8 +765,6 @@ def _(mo, os):
         train_batch_size=train_batch_size,
         train_learning_rate=train_learning_rate,
         train_patience=train_patience,
-        train_bce_weight=train_bce_weight,
-        train_tversky_weight=train_tversky_weight,
         train_tversky_alpha=train_tversky_alpha,
         train_tversky_beta=train_tversky_beta,
         train_dataset_dropdown=train_dataset_dropdown,
@@ -855,8 +842,6 @@ def _(generated_dataset, mo, os, time, torch, train_config, train_model):
             batch_size=train_config.value["train_batch_size"],
             lr=train_config.value["train_learning_rate"],
             model_save_path=training_model_save_path,
-            bce_weight=train_config.value["train_bce_weight"],
-            tversky_weight=train_config.value["train_tversky_weight"],
             tversky_alpha=train_config.value["train_tversky_alpha"],
             tversky_beta=train_config.value["train_tversky_beta"],
             base_filters=train_config.value["train_base_filters"]
@@ -952,11 +937,9 @@ def _(mo, os):
         start=0.0, stop=15.0, value=5.0, step=0.5,
         label="Distance Threshold (pixels)", show_value=True
     )
-
-    eval_detection_threshold = mo.ui.slider(
-        start=0, stop=0.5, value=0.5, step=1e-7,
-        label="Detection Threshold (confidence, 0 = sensitive, 1 = strict)", 
-        show_value=True,
+    eval_detection_threshold_text = mo.ui.text(
+        value="0.1",
+        label="Detection Threshold (confidence, 0 = sensitive, 1 = strict)"
     )
 
     eval_base_filters = mo.ui.slider(
@@ -980,7 +963,7 @@ def _(mo, os):
         eval_model_dropdown=eval_model_dropdown,
         eval_dataset_dropdown=eval_dataset_dropdown,
         eval_distance_threshold=eval_distance_threshold,
-        eval_detection_threshold=eval_detection_threshold,
+        eval_detection_threshold=eval_detection_threshold_text,
         eval_base_filters=eval_base_filters
     ).form(
         submit_button_label="Run Evaluation",
@@ -1044,6 +1027,11 @@ def _(comprehensive_evaluation, eval_config, generated_dataset, mo, os, torch):
         print(f"Distance threshold: {eval_config.value['eval_distance_threshold']} pixels")
         print(f"Detection threshold: {eval_config.value['eval_detection_threshold']}")
 
+        try:
+            eval_detection_threshold = float(eval_config.value['eval_detection_threshold'])
+        except (TypeError, ValueError):
+            eval_detection_threshold = 0.1  # fallback default
+
         # Run evaluation
         evaluation_results = comprehensive_evaluation(
             model_path=evaluation_model_path,
@@ -1051,7 +1039,7 @@ def _(comprehensive_evaluation, eval_config, generated_dataset, mo, os, torch):
             base_filter_size=eval_config.value["eval_base_filters"],
             marimo_var=True,
             distance_threshold=eval_config.value["eval_distance_threshold"],
-            threshold=eval_config.value["eval_detection_threshold"]
+            threshold=eval_detection_threshold
         )
 
         # Extract results

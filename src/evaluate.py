@@ -18,6 +18,9 @@ def comprehensive_evaluation(dataset_path, model_path, base_filter_size, save=No
     _, val_loader, test_loader = create_data_loaders(
         dataset_path=dataset_path,
         batch_size=16,
+        train_ratio=0.5,  # Use a small subset for training
+        val_ratio=0.25,    # Use a small subset for validation
+        test_ratio=0.25,   # Use most data for testing
     )
     
     # Use test loader for evaluation
@@ -77,6 +80,7 @@ def comprehensive_evaluation(dataset_path, model_path, base_filter_size, save=No
     print(f"  True Positives:  {spatial_results['total_true_positives']}")
     print(f"  False Positives: {spatial_results['total_false_positives']}")
     print(f"  False Negatives: {spatial_results['total_false_negatives']}")
+    print(f"  False alarm rate: {spatial_results['False alarm rate']}")
     
     # Return both results for further analysis
     return {

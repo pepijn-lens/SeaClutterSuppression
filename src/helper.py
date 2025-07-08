@@ -465,6 +465,7 @@ def evaluate_spatial_performance(model, data_loader, distance_threshold=5.0, dat
         # Spatial metrics
         'total_true_positives': total_tp,
         'total_false_positives': total_fp,
+        'False alarm rate': total_fp / 128 / 128/ total_samples,
         'total_false_negatives': total_fn,
         'precision': precision,
         'recall': recall,
@@ -500,6 +501,7 @@ def print_spatial_performance_report(results):
     print(f"  True Positives:  {results['total_true_positives']}")
     print(f"  False Positives: {results['total_false_positives']}")
     print(f"  False Negatives: {results['total_false_negatives']}")
+    print(f"  False alarm rate: {results['False alarm rate']:.3f}")
     
     print(f"\nPERFORMANCE METRICS:")
     print(f"  Precision: {results['precision']:.3f}")

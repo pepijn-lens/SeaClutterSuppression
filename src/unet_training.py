@@ -31,21 +31,6 @@ class TverskyLoss(nn.Module):
         
         return 1 - tversky
 
-class CombinedLoss(nn.Module):
-    def __init__(self, bce_weight=0.1, tversky_weight=0.9, alpha=0.2, beta=0.8):
-        super(CombinedLoss, self).__init__()
-        self.bce_loss = nn.BCEWithLogitsLoss()
-        self.tversky_loss = TverskyLoss(alpha=alpha, beta=beta)
-        self.bce_weight = bce_weight
-        self.tversky_weight = tversky_weight
-    
-    def forward(self, pred, target):
-        # BCE with logits expects raw logits (no sigmoid)
-        bce = self.bce_loss(pred, target)
-        # Tversky loss applies sigmoid internally
-        tversky = self.tversky_loss(pred, target)
-        return self.bce_weight * bce + self.tversky_weight * tversky
-
 def dice_coeff(pred, target, smooth=1.):
     pred = torch.sigmoid(pred).detach().cpu().numpy() > 0.5
     target = target.cpu().numpy()
@@ -67,13 +52,16 @@ def evaluate(model, loader, device, criterion):
 # ---------------------------
 # 3. Training Loop
 # ---------------------------
-def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, batch_size=16, lr=1e-4, pretrained=None, model_save_path='unet_single_frame.pt', bce_weight=0.1, tversky_weight=0.9, tversky_alpha= 0.2, tversky_beta=0.8, base_filters=16):
+def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, batch_size=16, lr=1e-4, pretrained=None, model_save_path='unet_single_frame.pt', tversky_alpha=0.2, tversky_beta=0.8, base_filters=16):
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
 
     train_loader, val_loader, _ = create_data_loaders(
         dataset_path=dataset_path,
         batch_size=batch_size,
+        train_ratio=0.7,  # Assuming you want 80% for training and 20% for validation
+        val_ratio=0.15,
+        test_ratio=0.15,  # Adjusted to ensure all ratios sum to 1
     )
 
     model = models.UNet(n_channels=n_channels, base_filters=base_filters).to(device)  # Now uses both parameters
@@ -82,7 +70,7 @@ def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, b
     if pretrained:
         model.load_state_dict(torch.load(pretrained, map_location=device))
         print(f"Loaded pretrained model from {pretrained}")
-    criterion = CombinedLoss(bce_weight=bce_weight, tversky_weight=tversky_weight)
+    criterion = TverskyLoss(alpha=tversky_alpha, beta=tversky_beta)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     
     # Cosine annealing scheduler
@@ -92,7 +80,7 @@ def train_model(dataset_path: str, n_channels=3, num_epochs=30, patience = 10, b
     best_val_loss = float('inf')
     patience_counter = 0
 
-    print(f"Using combined loss: BCE weight={bce_weight}, Tversky weight={tversky_weight}")
+    print(f"Using Tversky loss: alpha={tversky_alpha}, beta={tversky_beta}")
 
     for epoch in mo.status.progress_bar(range(num_epochs)):
         model.train()
@@ -155,10 +143,10 @@ if __name__ == "__main__":
                         help="Early stopping patience")
     parser.add_argument("--model-save-path", type=str, default="pretrained/tversky.pt",
                         help="Where to save the trained model")
-    parser.add_argument("--bce-weight", type=float, default=0.1,
-                        help="Weight for BCE loss in combined loss")
-    parser.add_argument("--tversky-weight", type=float, default=0.9,
-                        help="Weight for Tversky loss in combined loss")
+    parser.add_argument("--tversky-alpha", type=float, default=0.2,
+                        help="Alpha parameter for Tversky loss")
+    parser.add_argument("--tversky-beta", type=float, default=0.8,
+                        help="Beta parameter for Tversky loss")
     parser.add_argument("--base-filters", type=int, default=64,
                         help="Number of base filters for U-Net")
 
@@ -173,7 +161,7 @@ if __name__ == "__main__":
         lr=args.lr,
         pretrained=args.pretrained,
         model_save_path=args.model_save_path,
-        bce_weight=args.bce_weight,
-        tversky_weight=args.tversky_weight,
+        tversky_alpha=args.tversky_alpha,
+        tversky_beta=args.tversky_beta,
         base_filters=args.base_filters
     )

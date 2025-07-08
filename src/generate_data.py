@@ -55,21 +55,10 @@ def simulate_sequence_with_realistic_targets_and_masks(
             doppler_bin = int(tgt.doppler_hz / (rp.prf / rp.n_pulses)) + rp.n_pulses // 2
             doppler_bin = np.clip(doppler_bin, 0, rp.n_pulses - 1)
             
-            # Mark target in mask with blob size based on target type
-            target_size = getattr(tgt, 'size', 1)
-            range_half_size = (target_size - 1) // 2
-            doppler_blob_size = 1  # Keep Doppler spread consistent
-            
-            # Range extent
-            r_start = max(0, tgt.rng_idx - range_half_size)
-            r_end = min(rp.n_ranges, tgt.rng_idx + range_half_size + 1)
-            
-            # Doppler extent
-            d_start = max(0, doppler_bin - doppler_blob_size - 1)
-            d_end = min(rp.n_pulses, doppler_bin + doppler_blob_size + 1)
-            
-            target_mask[r_start:r_end, d_start:d_end] = 1.0
-            
+            # Only mark the exact target location (single range and doppler bin)
+            if 0 <= tgt.rng_idx < rp.n_ranges and 0 <= doppler_bin < rp.n_pulses:
+                target_mask[tgt.rng_idx, doppler_bin] = 1.0
+                
             # Update target range based on radial velocity
             range_change = tgt.current_velocity_mps * dt
             new_range = tgt.rng_idx * rp.range_resolution + range_change
@@ -94,7 +83,7 @@ def generate_large_dataset(
     # Dataset configuration
     n_samples = 10000  # Increased to ensure samples per class
     n_frames = 3
-    max_targets = 10
+    max_targets = 20
     samples_per_class = max(1, n_samples // (max_targets + 1))  # Ensure at least 1 sample per class
     
     # Default radar parameters
@@ -112,11 +101,11 @@ def generate_large_dataset(
     all_labels = []
     
     # Generate data for each class (0 to max_targets)
-    for n_targets in range(max_targets + 1):
-        for sample_idx in range(samples_per_class):
+    for n_targets in range(20, max_targets + 1):
+        for sample_idx in range(n_samples):
             # Random clutter parameters for this sample
             clutter_params = sea_clutter.ClutterParams(
-                mean_power_db=random.uniform(14.0, 18.0),
+                mean_power_db=random.uniform(0.0, 16.0),
                 shape_param=random.uniform(0.5, 1),
                 ar_coeff=random.uniform(0.8, 0.99),
                 wave_speed_mps=random.uniform(2.0, 6.0),
@@ -128,7 +117,7 @@ def generate_large_dataset(
             if n_targets > 0:
                 for _ in range(n_targets):
                     # Random target power between 10-20 dB for each target
-                    target_power = random.uniform(10.0, 20.0)
+                    target_power = random.uniform(10.0, 14.0)
                     
                     target = sea_clutter.create_realistic_target(
                         target_type, 
@@ -189,7 +178,7 @@ def generate_large_dataset(
             'n_doppler_bins': base_rp.n_pulses,
             'target_power_range_db': [10.0, 20.0],
             'clutter_param_ranges': {
-                'mean_power_db': [14.0, 18.0],  # Fixed to match actual range used
+                'mean_power_db': 14.0,  # Fixed to match actual range used
                 'shape_param': [0.5, 1.0],
                 'ar_coeff': [0.8, 0.99],
                 'wave_speed_mps': [2.0, 6.0]
@@ -224,11 +213,11 @@ if __name__ == "__main__":
     print(f"Number of classes: {dataset['metadata']['max_targets'] + 1}")
     
     # Create data directory if it doesn't exist
-    data_dir = "/Users/pepijnlens/Documents/SeaClutterSuppression/data"
+    data_dir = "/Users/pepijnlens/Documents/SeaClutterSuppression/local_data"
     os.makedirs(data_dir, exist_ok=True)
     
     # Save dataset
-    save_path = os.path.join(data_dir, "random2.pt")
+    save_path = os.path.join(data_dir, "random_single_px.pt")
     print(f"\nSaving dataset to {save_path}...")
     torch.save(dataset, save_path)
     print("Dataset saved successfully!")

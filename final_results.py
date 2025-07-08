@@ -8,55 +8,93 @@ import pandas as pd
 plt.style.use('seaborn-v0_8-whitegrid')
 sns.set_palette("husl")
 
-# Example ROC data for SNR=12dB: keys are thresholds, values are (P_d, P_fa) tuples
+roc_6SNR_no_clutter = {
+    "UNet": {
+        'P_d': [0.011, 0.016, 0.049, 0.073, 0.156, 0.335],
+        'P_fa': [1e-5, 2e-5, 1e-4, 2e-4, 1e-3, 1e-2]
+    },
+    "CFAR": {
+        'P_d': [0.010, 0.033, 0.111, 0.332],
+        'P_fa': [1e-5, 1e-4, 1e-3, 1e-2]
+    }
+}
+
+roc_8SNR_no_clutter = {
+    "UNet": {
+        'P_d': [0.039, 0.063, 0.153, 0.206, 0.343, 0.555],
+        'P_fa': [1e-5, 2e-5, 1e-4, 2e-4, 1e-3, 1e-2]
+    },
+    "CFAR": {
+        'P_d': [0.031, 0.096, 0.243, 0.527],
+        'P_fa': [1e-5, 1e-4, 1e-3, 1e-2]
+    }
+}
+
+roc_10SNR_no_clutter = {
+    "UNet": {
+        'P_d': [0.148, 0.226, 0.450, 0.531, 0.686, 0.789],
+        'P_fa': [1e-5, 2e-5, 1e-4, 2e-4, 1e-3, 1e-2]
+    },
+    "CFAR": {
+        'P_d': [0.131, 0.268, 0.498, 0.761],
+        'P_fa': [1e-5, 1e-4, 1e-3, 1e-2]
+    }
+}
+
 roc_12SNR_no_clutter = {
-"UNet":{0.00000000001: {'P_d': 0.721, 'P_fa': 0.00999556},
-    0.0000001: {'P_d': 0.813, 'P_fa': 0.00120916},
-    0.9999: {'P_d': 0.625, 'P_fa': 0.00009529},
-    0.99999997: {'P_d': 0.405, 'P_fa': 0.00003344},},
-"CFAR": {
-    1e-02: {'P_d': 0.928, 'P_fa': 0.00893015},
-    1e-03: {'P_d': 0.785, 'P_fa': 0.00108902},
-    1e-04: {'P_d': 0.576, 'P_fa': 0.00012947},
-    1e-05: {'P_d': 0.367, 'P_fa': 0.00001642},} 
+    "UNet": {
+        'P_d': [0.405, 0.536, 0.807, 0.866, 0.938, 0.94],
+        'P_fa': [1e-5, 2e-5, 1e-4, 2e-4, 1e-3, 1e-2]
+    },
+    "CFAR": {
+        'P_d': [0.369, 0.577, 0.791, 0.928],
+        'P_fa': [1e-5, 1e-4, 1e-3, 1e-2]
+    }
+}
+roc_16SNR_no_clutter = {
+    "UNet": {
+        'P_d': [0.771, 0.853, 0.970, 0.988, 0.997, 0.997],
+        'P_fa': [1e-5, 2e-5, 1e-4, 2e-4, 1e-3, 1e-2]
+    },
+    "CFAR": {
+        'P_d': [0.970, 0.989, 0.990, 0.988],
+        'P_fa': [1e-5, 1e-4, 1e-3, 1e-2]
+    }
 }
 
-roc_12SNR_clutter = {
-"UNet":{0.000000000001: {'P_d': 0.721, 'P_fa': 0.00972412},
-    0.0000001: {'P_d': 0.720, 'P_fa': 0.00111358},
-    0.01: {'P_d': 0.579, 'P_fa': 0.00010461},
-    0.99999997: {'P_d': 0.279, 'P_fa': 0.00001243},},
-"CFAR": {
-    1e-01: {'P_d': 0.872, 'P_fa': 0.05539847},
-    1e-02: {'P_d': 0.786, 'P_fa': 0.01158995},
-    1e-03: {'P_d': 0.603, 'P_fa': 0.00335479},
-    1e-04: {'P_d': 0.401, 'P_fa': 0.001581},
-    1e-05: {'P_d': 0.243, 'P_fa': 0.0009719},} 
-}
-
-def plot_roc_12snr(roc_data):
+def plot_all_roc_curves():
     """
-    Plot ROC curves for SNR=12dB for both UNet and CFAR.
+    Plot ROC curves for all SNRs for both UNet (solid) and CFAR (dotted).
     """
-    plt.figure(figsize=(7, 5))
-    for method, points in roc_data.items():
-        pf = [v['P_fa'] for k, v in sorted(points.items())]
-        pd = [v['P_d'] for k, v in sorted(points.items())]
-        plt.plot(pf, pd, marker='o', label=method)
-        # Annotate thresholds
-        for (k, v) in points.items():
-            plt.annotate(f'{k:.0e}', (v['P_fa'], v['P_d']), textcoords="offset points", xytext=(5,5), fontsize=8)
+    roc_dicts = [
+        (roc_6SNR_no_clutter, "SNR=6dB"),
+        (roc_8SNR_no_clutter, "SNR=8dB"),
+        (roc_10SNR_no_clutter, "SNR=10dB"),
+        (roc_12SNR_no_clutter, "SNR=12dB"),
+        (roc_16SNR_no_clutter, "SNR=16dB"),
+    ]
+    plt.figure(figsize=(8, 6))
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+    for idx, (roc_data, label) in enumerate(roc_dicts):
+        # U-Net: solid
+        pf_unet = roc_data["UNet"]['P_fa']
+        pd_unet = roc_data["UNet"]['P_d']
+        plt.plot(pf_unet, pd_unet, marker='o', linestyle='-', color=colors[idx], label=f'U-Net {label}')
+        # CFAR: dotted
+        pf_cfar = roc_data["CFAR"]['P_fa']
+        pd_cfar = roc_data["CFAR"]['P_d']
+        plt.plot(pf_cfar, pd_cfar, marker='s', linestyle=':', color=colors[idx], label=f'CFAR {label}')
     plt.xscale('log')
     plt.xlabel('False Alarm Rate (P_FA)')
     plt.ylabel('Detection Probability (P_D)')
-    plt.title('ROC Curve at SNR=12dB')
+    plt.title('ROC Curves at Different SNRs (No Sea Clutter)')
     plt.grid(True, alpha=0.3)
-    plt.legend()
+    plt.legend(fontsize=9)
     plt.tight_layout()
     plt.show()
 
 # Uncomment to plot when running this file
-plot_roc_12snr(roc_12SNR_clutter)
+plot_all_roc_curves()
 
 
 
@@ -73,9 +111,9 @@ def plot_final_results():
         'CFAR_1e-4_pfa': [1.3e-4, 1.3e-4, 1.3e-4, 1.3e-4, 1e-4, 1e-4],
         'CFAR_1e-3_recall': [0.112, 0.237, 0.494, 0.785, 0.991, 0.995],
         'CFAR_1e-3_pfa': [1.1e-3, 1.1e-3, 1.1e-3, 1e-3, 1e-3, 1e-3],
-        'UNet_1e-1_recall': [0.054, 0.145, 0.381, 0.721, 0.992, 0.992],
+        'UNet_1e-1_recall': [0.049, 0.153, 0.450, 0.807, 0.970, 0.950],
         'UNet_1e-1_pfa': [1.9e-4, 1.9e-4, 1.9e-4, 2e-4, 2e-4, 2.4e-4],
-        'UNet_1e-6_recall': [0.112, 0.260, 0.53, 0.799, 0.984, 0.985],
+        'UNet_1e-6_recall': [0.156, 0.343, 0.686, 0.938, 0.997, 0.991],
         'UNet_1e-6_pfa': [7.4e-4, 7.5e-4, 7.2e-4, 7.4e-4, 7.9e-4, 9.3e-4]
     }
     
@@ -86,10 +124,10 @@ def plot_final_results():
         'CFAR_1e-4_pfa': [1.6e-3, 1.6e-3, 1.6e-3, 1.6e-3, 1.6e-3, 1.6e-3],
         'CFAR_1e-3_recall': [0.106, 0.175, 0.374, 0.603, 0.892, 0.962],
         'CFAR_1e-3_pfa': [3.4e-3, 3.4e-3, 3.4e-3, 3.4e-3, 3.4e-3, 3.4e-3],
-        'UNet_1e-1_recall': [0.023, 0.073, 0.244, 0.553, 0.924, 0.972],
+        'UNet_1e-1_recall': [0.155, 0.329, 0.642, 0.896, 0.986, 0.995],
         'UNet_1e-1_pfa': [7.8e-5, 7.8e-5, 8.3e-5, 8.4e-5, 8.6e-5, 9.4e-5],
-        'UNet_1e-6_recall': [0.070, 0.162, 0.382, 0.688, 0.939, 0.976],
-        'UNet_1e-6_pfa': [6.2e-4, 6.2e-4, 6.2e-4, 6.1e-4, 6.4e-4, 7e-4]
+        'UNet_1e-6_recall': [0.215, 0.408, 0.711, 0.917, 0.983, 0.992],
+        'UNet_1e-6_pfa': [0.002630060369318182]
     }
     
     # Data for random sea clutter configurations
@@ -127,10 +165,10 @@ def plot_final_results():
              label='CFAR (P_FA=1e-3)')
     ax1.plot(no_clutter_data['SNR'], no_clutter_data['UNet_1e-1_recall'], 
              '^-', color=colors['UNet_1e-1'], linewidth=2, markersize=8, 
-             label='U-Net (thresh=1e-1)')
+             label='U-Net (P_FA=1e-4)')
     ax1.plot(no_clutter_data['SNR'], no_clutter_data['UNet_1e-6_recall'], 
              'v-', color=colors['UNet_1e-6'], linewidth=2, markersize=8, 
-             label='U-Net (thresh=1e-6)')
+             label='U-Net (P_FA=1e-3)')
     
     ax1.set_xlabel('SNR (dB)', fontsize=12)
     ax1.set_ylabel('Recall', fontsize=12)
@@ -144,16 +182,16 @@ def plot_final_results():
     
     ax2.plot(with_clutter_data['SNR'], with_clutter_data['CFAR_1e-4_recall'], 
              'o--', color=colors['CFAR_1e-4'], linewidth=2, markersize=8, 
-             label='CFAR (P_FA=1e-4)')
+             label='CFAR (P_FA=1.6e-3)')
     ax2.plot(with_clutter_data['SNR'], with_clutter_data['CFAR_1e-3_recall'], 
              's--', color=colors['CFAR_1e-3'], linewidth=2, markersize=8, 
-             label='CFAR (P_FA=1e-3)')
+             label='CFAR (P_FA=3.4e-3)')
     ax2.plot(with_clutter_data['SNR'], with_clutter_data['UNet_1e-1_recall'], 
              '^-', color=colors['UNet_1e-1'], linewidth=2, markersize=8, 
-             label='U-Net (thresh=1e-1)')
+             label='U-Net (P_FA=1.3e-3)')
     ax2.plot(with_clutter_data['SNR'], with_clutter_data['UNet_1e-6_recall'], 
              'v-', color=colors['UNet_1e-6'], linewidth=2, markersize=8, 
-             label='U-Net (thresh=1e-6)')
+             label='U-Net (P_FA=2.6e-3)')
     
     ax2.set_xlabel('SNR (dB)', fontsize=12)
     ax2.set_ylabel('Recall', fontsize=12)

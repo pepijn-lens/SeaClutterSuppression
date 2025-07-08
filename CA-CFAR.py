@@ -331,10 +331,14 @@ def evaluate(test_loader):
                 progress_pct = 100 * (batch_idx + 1) / len(test_loader)
                 print(f"  Processed {batch_idx + 1}/{len(test_loader)} samples ({progress_pct:.1f}%)", end='\r')
         
+
+        false_alarm_rate = fp_total / (128 * 128 * total_samples) 
+
         # Store final results for this PFA
         results[pfa]['tp'] = tp_total
         results[pfa]['fp'] = fp_total
         results[pfa]['fn'] = fn_total
+        results[pfa]['far'] = false_alarm_rate
         
         # Calculate metrics
         precision = tp_total / (tp_total + fp_total) if (tp_total + fp_total) > 0 else 0
@@ -349,6 +353,7 @@ def evaluate(test_loader):
         print(f"    Precision: {precision:.3f}")
         print(f"    Recall: {recall:.3f}")
         print(f"    F1-Score: {f1_score:.3f}")
+        print(f"    False Alarm Rate: {false_alarm_rate:.3f}")
 
     total_time = time.time() - start_time
     print(f"\n{'='*60}")
@@ -386,6 +391,7 @@ def evaluate(test_loader):
         f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
         
         print(f"{pfa:<12.0e} {precision:<10.3f} {recall:<8.3f} {f1_score:<8.3f} {tp:<6d} {fp:<6d} {fn:<6d}")
+        print(f'false alarm rate for threshold {pfa}: {results[pfa]["far"]:.3f}')
 
     print(f"\nDataset: {dataset_path}")
     print(f"Distance threshold: {distance_threshold} pixels")
@@ -402,12 +408,12 @@ if __name__ == "__main__":
     num_doppler_bins = 128
 
     # CFAR parameters
-    pfa_values = [1e-2]  # Different false alarm probabilities
+    pfa_values = [1e-5, 1e-4, 1e-3, 1e-2]  # Different false alarm probabilities
     guard_cells = 1
     training_cells = 4
 
     # Dataset parameters
-    dataset_path = '/Users/pepijnlens/Documents/SeaClutterSuppression/local_data/12SNR_clutter.pt'
+    dataset_path = '/Users/pepijnlens/Documents/SeaClutterSuppression/data/8SNR_no_clutter.pt'
     distance_threshold = 1.5  # Maximum distance for spatial target matching (pixels)
 
     # Load dataset using the specified function
@@ -417,12 +423,15 @@ if __name__ == "__main__":
         batch_size=1,  # Process one sample at a time
         num_workers=0,  # No multiprocessing for simpler debugging
         normalize=False,  # No normalization for raw data
+        train_ratio=0.5,  # Use a small portion for training
+        val_ratio=0.3,  # No validation set needed for this analysis
+        test_ratio=0.2  # Use most of the data for testing
     )
 
     print(f"Test dataset loaded: {len(test_loader)} samples")
 
     # Add option for single sample analysis
-    ANALYZE_SAMPLE = True  # Set to True to analyze just one sample in detail
+    ANALYZE_SAMPLE = False  # Set to True to analyze just one sample in detail
 
     if ANALYZE_SAMPLE:
         print("="*60)

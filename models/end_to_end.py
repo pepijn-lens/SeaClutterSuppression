@@ -69,7 +69,7 @@ class ClusteringModule:
 
 class EndToEndTargetDetector(nn.Module):
     """End-to-end model: Range-Doppler map -> Binary segmentation -> Target centroids"""
-    def __init__(self, unet_weights_path=None, clustering_params=None, n_channels=3, base_filter_size=64, threshold=0.001):  # Updated with clean dataset threshold
+    def __init__(self, unet_weights_path=None, clustering_params=None, n_channels=3, base_filter_size=64, threshold=0.999999910593033):  # Updated with high precision threshold for FAR 2e-5
         super(EndToEndTargetDetector, self).__init__()
         
         # Initialize U-Net with your architecture
@@ -107,14 +107,17 @@ class EndToEndTargetDetector(nn.Module):
         binary_map = self.unet(range_doppler_map)
         
         # Get binary segmentation from U-Net (keep on MPS)
-        binary_maps = torch.sigmoid(binary_map)  # Shape: (B, 1, 128, 128)
+        binary_map = self.unet(range_doppler_map)
+        
+        # Convert to CPU first, then to double precision for higher precision
+        binary_maps = torch.sigmoid(binary_map.cpu().double())  # Shape: (B, 1, 128, 128)
 
         # Only convert to CPU/NumPy for clustering operations
         batch_centroids = []
         
         for i in range(binary_maps.shape[0]):
-            # Move single sample to CPU for clustering
-            binary_map_cpu = binary_maps[i, 0].cpu().numpy()  # Shape: (128, 128)
+            # Use double precision numpy array
+            binary_map_cpu = binary_maps[i, 0].numpy().astype(np.float64)  # Shape: (128, 128)
             centroids = self.clustering.extract_centroids(binary_map_cpu, threshold=self.threshold)
             batch_centroids.append(centroids)
         
