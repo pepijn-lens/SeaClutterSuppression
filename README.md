@@ -48,7 +48,7 @@ If you use this work in your research, please cite this repository as described 
 ```bibtex
 @software{Lens_SeaClutterSuppression_2025,
   author = {Pepijn Lens},
-  title = {End-to-End Target Detection in Range-Doppler Maps with Temporal U-Nets: Deep Learning Approaches for Maritime Radar},
+  title = {Threshold-Tunable U-Net for Small Target Detection in Maritime Radar: An Alternative to CFAR},
   url = {https://github.com/pepijn-lens/SeaClutterSuppression},
   year = {2025},
   note = {BSc thesis at Leiden University and internship at TNO}
