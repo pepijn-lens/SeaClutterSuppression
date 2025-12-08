@@ -3,7 +3,7 @@
 This repository contains the code developed as part of my BSc thesis at **Leiden University** and internship at **TNO**, titled:
 
 
-**_End-to-End Target Detection in Range-Doppler Maps with Temporal U-Nets: Deep Learning Approaches for Maritime Radar_**
+**_Threshold-Tunable U-Net for Small Target Detection in Maritime Radar: An Alternative to CFAR_**
 
 ## Overview
 
